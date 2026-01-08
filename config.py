@@ -26,6 +26,7 @@ class DataConfig(BaseModel):
 class ProcessingConfig(BaseModel):
     max_retries: int = Field(default=3)
     retry_delay: int = Field(default=2)
+    batch_process_size: int = Field(default=10)  # 每处理多少个chunk后写入数据库
 
 
 class Config(BaseModel):
@@ -57,7 +58,8 @@ class Config(BaseModel):
             ),
             processing=ProcessingConfig(
                 max_retries=int(os.getenv("MAX_RETRIES", "3")),
-                retry_delay=int(os.getenv("RETRY_DELAY", "2"))
+                retry_delay=int(os.getenv("RETRY_DELAY", "2")),
+                batch_process_size=int(os.getenv("BATCH_PROCESS_SIZE", "10"))
             )
         )
 

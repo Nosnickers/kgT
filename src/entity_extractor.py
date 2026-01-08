@@ -84,7 +84,7 @@ ENTITY TYPES (use only these):
 - Product: Products, devices, services (e.g., MacBook Air, iPhone 15, Apple Watch)
 - Material: Materials, elements, substances (e.g., aluminum, cobalt, tungsten, lithium)
 - Goal: Objectives, targets, commitments (e.g., Apple 2030, carbon neutrality)
-- Metric: Measurements, statistics, percentages (e.g., emissions, recycled percentage, water usage)
+- Metric: Measurements, statistics, percentages with clear context (e.g., emissions, recycled percentage, water usage)
 - Initiative: Programs, projects, campaigns (e.g., Power for Impact, Grid Forecast)
 - Location: Places, regions, countries (e.g., Nepal, Colombia, India, Brazil)
 - Person: Individuals, roles (e.g., Lisa Jackson, VP)
@@ -109,12 +109,18 @@ EXTRACTION RULES:
 3. Use exact names from the text when possible
 4. Assign the most specific entity type from the allowed list
 5. Assign the most appropriate relationship type from the allowed list
-6. Include brief descriptions for entities and relationships when relevant
-7. Do not hallucinate entities or relationships not present in the text
-8. Return results in valid JSON format
-
-OUTPUT FORMAT:
-Return a JSON object with the following structure:
+6. **Description Rules:**
+   - For entities: description must be directly extracted from the text and accurately reflect the entity's context in the original content
+   - For relationships: description must be directly extracted from the text and explain the nature of the relationship as stated in the original content
+   - **NEVER invent or add information that is not present in the text**
+   - Description should be concise and relevant, focusing on the entity's or relationship's role in the text
+7. **Number/Metric Rules:**
+   - Do NOT extract isolated numbers, amounts, or percentages as Metric entities
+   - Only extract metrics when they have clear context and meaning (e.g., "carbon emissions reduced by 35%" → "carbon emissions" is a Metric with value 35%)
+   - Numbers without context (e.g., "$100", "50%", "2025") should NOT be extracted as separate entities
+   - Numbers should be included as part of the entity's description or relationship's description when relevant
+8. Do not hallucinate entities or relationships not present in the text
+9. Return results in JSON object with the following OUTPUT FORMAT structure:
 {
   "entities": [
     {
@@ -180,12 +186,14 @@ Return the extraction result in JSON format."""
             
         # 处理JSON解析错误
         except json.JSONDecodeError as e:
-            print(f"JSON解析错误: {e}")
-            print(f"响应内容: {content}")
+            import logging
+            logging.error(f"JSON解析错误: {e}")
+            logging.error(f"响应内容: {content}")
             return ExtractionResult(entities=[], relationships=[])
         # 处理其他异常
         except Exception as e:
-            print(f"提取错误: {e}")
+            import logging
+            logging.error(f"提取错误: {e}")
             return ExtractionResult(entities=[], relationships=[])
 
     # 清理LLM返回的JSON响应内容

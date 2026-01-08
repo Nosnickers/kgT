@@ -24,21 +24,25 @@ class Neo4jManager:
         self.driver = None
 
     def connect(self):
+        import logging
         self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password))
         self.driver.verify_connectivity()
-        print(f"Connected to Neo4j at {self.uri}")
+        logging.info(f"Connected to Neo4j at {self.uri}")
 
     def close(self):
+        import logging
         if self.driver:
             self.driver.close()
-            print("Neo4j connection closed")
+            logging.info("Neo4j connection closed")
 
     def clear_database(self):
+        import logging
         with self.driver.session() as session:
             session.run("MATCH (n) DETACH DELETE n")
-            print("Database cleared")
+            logging.info("Database cleared")
 
     def create_constraints(self):
+        import logging
         with self.driver.session() as session:
             constraints = [
                 "CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (n:Entity) REQUIRE n.name IS UNIQUE",
@@ -48,7 +52,7 @@ class Neo4jManager:
                 try:
                     session.run(constraint)
                 except Exception as e:
-                    print(f"Constraint creation warning: {e}")
+                    logging.warning(f"Constraint creation warning: {e}")
 
     def create_entity(self, entity: Entity) -> bool:
         with self.driver.session() as session:
