@@ -1,52 +1,80 @@
+# 导入JSON处理模块
 import json
+# 导入正则表达式模块
 import re
+# 导入类型注解相关模块
 from typing import List, Dict, Any, Optional
+# 导入LangChain的Ollama聊天模型
 from langchain_ollama import ChatOllama
+# 导入LangChain的聊天提示模板
 from langchain_core.prompts import ChatPromptTemplate
+# 导入LangChain的JSON输出解析器
 from langchain_core.output_parsers import JsonOutputParser
+# 导入LangChain的消息类型
 from langchain_core.messages import HumanMessage, SystemMessage
+# 导入Pydantic模型和字段定义
 from pydantic import BaseModel, Field
 
 
+# 定义提取的实体数据模型
 class ExtractedEntity(BaseModel):
-    name: str = Field(description="The name of the entity")
-    type: str = Field(description="The type of the entity (Organization, Product, Material, Goal, Metric, Initiative, Location, etc.)")
-    description: Optional[str] = Field(default="", description="A brief description of the entity")
+    # 实体名称
+    name: str = Field(description="实体的名称")
+    # 实体类型（组织、产品、材料、目标等）
+    type: str = Field(description="实体的类型（Organization, Product, Material, Goal, Metric, Initiative, Location等）")
+    # 实体的简要描述（可选）
+    description: Optional[str] = Field(default="", description="实体的简要描述")
 
 
+# 定义提取的关系数据模型
 class ExtractedRelationship(BaseModel):
-    source: str = Field(description="The name of the source entity")
-    target: str = Field(description="The name of the target entity")
-    type: str = Field(description="The type of relationship (ACHIEVES, USES, REDUCES, CONTAINS, IMPLEMENTS, LOCATED_IN, etc.)")
-    description: Optional[str] = Field(default="", description="A brief description of the relationship")
+    # 源实体名称
+    source: str = Field(description="源实体的名称")
+    # 目标实体名称
+    target: str = Field(description="目标实体的名称")
+    # 关系类型（ACHIEVES, USES, REDUCES等）
+    type: str = Field(description="关系的类型（ACHIEVES, USES, REDUCES, CONTAINS, IMPLEMENTS, LOCATED_IN等）")
+    # 关系的简要描述（可选）
+    description: Optional[str] = Field(default="", description="关系的简要描述")
 
 
+# 定义实体提取结果的数据模型
 class ExtractionResult(BaseModel):
-    entities: List[ExtractedEntity] = Field(default_factory=list, description="List of extracted entities")
-    relationships: List[ExtractedRelationship] = Field(default_factory=list, description="List of extracted relationships")
+    # 提取的实体列表
+    entities: List[ExtractedEntity] = Field(default_factory=list, description="提取的实体列表")
+    # 提取的关系列表
+    relationships: List[ExtractedRelationship] = Field(default_factory=list, description="提取的关系列表")
 
 
+# 实体提取器类
 class EntityExtractor:
+    # 支持的实体类型列表
     ENTITY_TYPES = [
         "Organization", "Product", "Material", "Goal", "Metric", 
         "Initiative", "Location", "Person", "Technology", "Program"
     ]
     
+    # 支持的关系类型列表
     RELATIONSHIP_TYPES = [
         "ACHIEVES", "USES", "REDUCES", "CONTAINS", "IMPLEMENTS", 
         "LOCATED_IN", "PARTNERS_WITH", "PRODUCES", "MEASURES", "TARGETS"
     ]
 
+    # 初始化实体提取器
     def __init__(self, base_url: str, model: str, temperature: float = 0.1, num_ctx: int = 4096):
+        # 创建Ollama聊天模型实例
         self.llm = ChatOllama(
-            base_url=base_url,
-            model=model,
-            temperature=temperature,
-            num_ctx=num_ctx
+            base_url=base_url,  # Ollama服务器地址
+            model=model,        # 使用的模型名称
+            temperature=temperature,  # 生成文本的随机性参数
+            num_ctx=num_ctx      # 上下文窗口大小
         )
+        # 创建JSON输出解析器
         self.parser = JsonOutputParser(pydantic_object=ExtractionResult)
 
+    # 创建实体和关系提取的提示模板
     def create_extraction_prompt(self) -> ChatPromptTemplate:
+        # 系统提示，定义LLM的角色和任务
         system_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from environmental and business reports.
 
 Your task is to extract entities and relationships from the given text and return them in a structured JSON format.
@@ -105,6 +133,7 @@ Return a JSON object with the following structure:
   ]
 }"""
 
+        # 用户提示，提供要提取的文本
         human_prompt = """Extract entities and relationships from the following text:
 
 Text:
@@ -112,52 +141,71 @@ Text:
 
 Return the extraction result in JSON format."""
 
+        # 创建并返回聊天提示模板
         return ChatPromptTemplate.from_messages([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=human_prompt)
+            SystemMessage(content=system_prompt),  # 系统消息
+            HumanMessage(content=human_prompt)      # 用户消息
         ])
 
+    # 从文本中提取实体和关系
     def extract(self, text: str) -> ExtractionResult:
+        # 创建提取提示
         prompt = self.create_extraction_prompt()
         
+        # 格式化提示消息
         formatted_prompt = prompt.format_messages(text=text)
         
         try:
+            # 调用LLM进行提取
             response = self.llm.invoke(formatted_prompt)
             content = response.content
             
+            # 清理JSON响应内容
             content = self.clean_json_response(content)
             
+            # 解析JSON数据
             result_data = json.loads(content)
             
+            # 转换为实体对象列表
             entities = [
                 ExtractedEntity(**entity) for entity in result_data.get("entities", [])
             ]
+            # 转换为关系对象列表
             relationships = [
                 ExtractedRelationship(**rel) for rel in result_data.get("relationships", [])
             ]
             
+            # 返回提取结果对象
             return ExtractionResult(entities=entities, relationships=relationships)
             
+        # 处理JSON解析错误
         except json.JSONDecodeError as e:
-            print(f"JSON parsing error: {e}")
-            print(f"Response content: {content}")
+            print(f"JSON解析错误: {e}")
+            print(f"响应内容: {content}")
             return ExtractionResult(entities=[], relationships=[])
+        # 处理其他异常
         except Exception as e:
-            print(f"Extraction error: {e}")
+            print(f"提取错误: {e}")
             return ExtractionResult(entities=[], relationships=[])
 
+    # 清理LLM返回的JSON响应内容
     def clean_json_response(self, content: str) -> str:
+        # 去除首尾空白字符
         content = content.strip()
         
+        # 如果包含```json标记，则提取标记内的内容
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
+        # 如果包含```标记，则提取标记内的内容
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
         
-        content = re.sub(r'^\s*[\{\[]', '', content)
-        content = re.sub(r'[\}\]]\s*$', '', content)
+        # 寻找JSON数据的开始位置 - 找到第一个'{'字符
+        json_start = content.find('{')
+        if json_start != -1:
+            content = content[json_start:]
         
+        # 修复可能的JSON格式问题
         if not content.startswith('{'):
             content = '{' + content
         if not content.endswith('}'):
@@ -165,33 +213,43 @@ Return the extraction result in JSON format."""
         
         return content
 
+    # 批量提取多个文本的实体和关系
     def extract_batch(self, texts: List[str]) -> List[ExtractionResult]:
         results = []
+        # 遍历每个文本进行提取
         for text in texts:
             result = self.extract(text)
             results.append(result)
         return results
 
+    # 验证提取结果的有效性
     def validate_extraction(self, result: ExtractionResult) -> bool:
+        # 验证所有实体类型是否有效
         for entity in result.entities:
             if entity.type not in self.ENTITY_TYPES:
-                print(f"Warning: Invalid entity type '{entity.type}' for entity '{entity.name}'")
+                print(f"警告: 实体 '{entity.name}' 的类型 '{entity.type}' 无效")
                 return False
         
+        # 验证所有关系类型是否有效
         for rel in result.relationships:
             if rel.type not in self.RELATIONSHIP_TYPES:
-                print(f"Warning: Invalid relationship type '{rel.type}' for relationship '{rel.source} -> {rel.target}'")
+                print(f"警告: 关系 '{rel.source} -> {rel.target}' 的类型 '{rel.type}' 无效")
                 return False
         
         return True
 
+    # 获取提取结果的统计信息
     def get_extraction_stats(self, results: List[ExtractionResult]) -> Dict[str, Any]:
+        # 计算总实体数
         total_entities = sum(len(result.entities) for result in results)
+        # 计算总关系数
         total_relationships = sum(len(result.relationships) for result in results)
         
+        # 初始化实体类型和关系类型的计数字典
         entity_type_counts = {}
         relationship_type_counts = {}
         
+        # 统计各种实体类型和关系类型的数量
         for result in results:
             for entity in result.entities:
                 entity_type_counts[entity.type] = entity_type_counts.get(entity.type, 0) + 1
@@ -199,12 +257,13 @@ Return the extraction result in JSON format."""
             for rel in result.relationships:
                 relationship_type_counts[rel.type] = relationship_type_counts.get(rel.type, 0) + 1
         
+        # 返回统计信息
         return {
-            "total_chunks": len(results),
-            "total_entities": total_entities,
-            "total_relationships": total_relationships,
-            "avg_entities_per_chunk": total_entities / len(results) if results else 0,
-            "avg_relationships_per_chunk": total_relationships / len(results) if results else 0,
-            "entity_type_distribution": entity_type_counts,
-            "relationship_type_distribution": relationship_type_counts
+            "total_chunks": len(results),  # 文本块总数
+            "total_entities": total_entities,  # 总实体数
+            "total_relationships": total_relationships,  # 总关系数
+            "avg_entities_per_chunk": total_entities / len(results) if results else 0,  # 每块平均实体数
+            "avg_relationships_per_chunk": total_relationships / len(results) if results else 0,  # 每块平均关系数
+            "entity_type_distribution": entity_type_counts,  # 实体类型分布
+            "relationship_type_distribution": relationship_type_counts  # 关系类型分布
         }
