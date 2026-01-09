@@ -63,8 +63,10 @@ class GraphBuilder:
         all_entities = {}
         # 存储当前批次新增的实体
         new_entities = {}
-        # 存储临时关系
-        temp_relationships = []
+        # 存储所有关系（去重）
+        all_relationships = {}
+        # 存储当前批次新增的关系
+        new_relationships = []
         # 存储所有提取结果
         extraction_results = []
         
@@ -93,14 +95,27 @@ class GraphBuilder:
                 
                 entity_key = (entity_name, entity_type)  # 使用清理后的名称和类型作为唯一键
                 if entity_key not in all_entities:
-                    # 创建新的Entity对象并添加到字典中，包含chunk_id属性
+                    # 创建新的Entity对象并添加到字典中，包含chunk_id数组
                     entity_obj = Entity(
                         name=entity_name,
                         type=entity_type,
-                        properties={"description": entity_desc, "chunk_id": chunk_id}
+                        properties={"description": entity_desc, "chunk_id": [chunk_id]}
                     )
                     all_entities[entity_key] = entity_obj
                     new_entities[entity_key] = entity_obj  # 记录为新增实体
+                else:
+                    # 实体已存在，合并chunk_id数组
+                    entity_obj = all_entities[entity_key]
+                    current_chunk_ids = entity_obj.properties.get("chunk_id", [])
+                    if isinstance(current_chunk_ids, list):
+                        if chunk_id not in current_chunk_ids:
+                            current_chunk_ids.append(chunk_id)
+                    else:
+                        # 如果当前不是数组，转换为数组
+                        entity_obj.properties["chunk_id"] = [current_chunk_ids, chunk_id] if current_chunk_ids != chunk_id else [current_chunk_ids]
+                    # 更新实体对象
+                    all_entities[entity_key] = entity_obj
+                    new_entities[entity_key] = entity_obj  # 更新新增实体
             
             # 处理提取的关系
             for rel in result.relationships:
@@ -110,13 +125,33 @@ class GraphBuilder:
                 rel_type = rel.type.strip('"\'')
                 rel_desc = rel.description.strip('"\'') if rel.description else ""
                 
-                # 创建新的Relationship对象并添加到列表中，包含chunk_id属性
-                temp_relationships.append(Relationship(
-                    source=rel_source,
-                    target=rel_target,
-                    type=rel_type,
-                    properties={"description": rel_desc, "chunk_id": chunk_id}
-                ))
+                # 使用(source, target, type)作为关系唯一键
+                rel_key = (rel_source, rel_target, rel_type)
+                
+                if rel_key not in all_relationships:
+                    # 创建新的Relationship对象并添加到字典中，包含chunk_id数组
+                    rel_obj = Relationship(
+                        source=rel_source,
+                        target=rel_target,
+                        type=rel_type,
+                        properties={"description": rel_desc, "chunk_id": [chunk_id]}
+                    )
+                    all_relationships[rel_key] = rel_obj
+                    new_relationships.append(rel_obj)  # 记录为新增关系
+                else:
+                    # 关系已存在，合并chunk_id数组
+                    rel_obj = all_relationships[rel_key]
+                    current_chunk_ids = rel_obj.properties.get("chunk_id", [])
+                    if isinstance(current_chunk_ids, list):
+                        if chunk_id not in current_chunk_ids:
+                            current_chunk_ids.append(chunk_id)
+                    else:
+                        # 如果当前不是数组，转换为数组
+                        rel_obj.properties["chunk_id"] = [current_chunk_ids, chunk_id] if current_chunk_ids != chunk_id else [current_chunk_ids]
+                    # 更新关系对象
+                    all_relationships[rel_key] = rel_obj
+                    # 添加到新增关系列表
+                    new_relationships.append(rel_obj)
             
             # 每处理batch_process_size个chunk或处理完所有chunk后，写入数据库
             if i % batch_process_size == 0 or i == total_chunks:
@@ -136,15 +171,15 @@ class GraphBuilder:
                     logging.info(f"批次 {current_batch}: 没有新增实体需要存储")
                 
                 # 将当前批次的关系存储到Neo4j
-                logging.info(f"批次 {current_batch}: 正在将 {len(temp_relationships)} 个关系存储到Neo4j...")
+                logging.info(f"批次 {current_batch}: 正在将 {len(new_relationships)} 个关系存储到Neo4j...")
                 relationships_created = self._batch_create_with_retry(
-                    temp_relationships,
+                    new_relationships,
                     self.neo4j_manager.batch_create_relationships
                 )
                 total_relationships_created += relationships_created
                 
-                # 清空临时关系列表和新增实体字典
-                temp_relationships = []
+                # 清空新增关系列表和新增实体字典
+                new_relationships = []
                 new_entities = {}
                 
                 logging.info(f"批次 {current_batch}: 写入完成，已处理 {i}/{total_chunks} 个数据块")

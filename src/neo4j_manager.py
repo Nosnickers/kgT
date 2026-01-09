@@ -124,9 +124,18 @@ class Neo4jManager:
                 if 'description' in entity_properties and entity_properties['description']:
                     entity_properties['description'] = entity_properties['description'].strip('"\'')
                 
+                # 处理chunk_id数组
+                chunk_id = entity_properties.get('chunk_id', [])
+                if not isinstance(chunk_id, list):
+                    chunk_id = [chunk_id]
+                entity_properties['chunk_id'] = chunk_id
+                
                 query = """
                 MERGE (e:Entity {name: $name, type: $type})
-                SET e += $properties
+                ON CREATE SET e += $properties
+                ON MATCH SET 
+                    e.description = COALESCE($properties.description, e.description),
+                    e.chunk_id = $properties.chunk_id
                 """
                 session.run(
                     query,
@@ -149,11 +158,20 @@ class Neo4jManager:
                 if 'description' in rel_properties and rel_properties['description']:
                     rel_properties['description'] = rel_properties['description'].strip('"\'')
                 
+                # 处理chunk_id数组
+                chunk_id = rel_properties.get('chunk_id', [])
+                if not isinstance(chunk_id, list):
+                    chunk_id = [chunk_id]
+                rel_properties['chunk_id'] = chunk_id
+                
                 query = """
                 MATCH (source:Entity {name: $source})
                 MATCH (target:Entity {name: $target})
                 MERGE (source)-[r:RELATIONSHIP {type: $type}]->(target)
-                SET r += $properties
+                ON CREATE SET r += $properties
+                ON MATCH SET 
+                    r.description = COALESCE($properties.description, r.description),
+                    r.chunk_id = $properties.chunk_id
                 """
                 session.run(
                     query,
