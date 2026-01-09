@@ -80,51 +80,48 @@ class EntityExtractor:
 
     # 创建实体和关系提取的提示模板
     def create_extraction_prompt(self) -> ChatPromptTemplate:
-        # 基础提示模板
-        base_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from environmental and business reports.
+        # 基础提示模板 - 针对小说文本优化
+        base_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from fictional stories, novels, and narrative texts.
 
-Your task is to extract entities and relationships from the given text and return them in a structured JSON format.
+Your task is to extract characters, locations, organizations, and their relationships from the given fictional text and return them in a structured JSON format.
 
-ENTITY TYPES (use only these):
-- Organization: Companies, institutions, groups (e.g., Apple, suppliers, communities)
-- Product: Products, devices, services (e.g., MacBook Air, iPhone 15, Apple Watch)
-- Material: Materials, elements, substances (e.g., aluminum, cobalt, tungsten, lithium)
-- Goal: Objectives, targets, commitments (e.g., Apple 2030, carbon neutrality)
-- Metric: Measurements, statistics, percentages with clear context (e.g., emissions, recycled percentage, water usage)
-- Initiative: Programs, projects, campaigns (e.g., Power for Impact, Grid Forecast)
-- Location: Places, regions, countries (e.g., Nepal, Colombia, India, Brazil)
-- Person: Individuals, roles (e.g., Lisa Jackson, VP)
-- Technology: Technologies, methods, processes (e.g., renewable energy, recycling)
-- Program: Structured programs or frameworks (e.g., Supplier Clean Water Program)
+ENTITY TYPES (use only these for fictional content):
+- Character: People, agents, protagonists, antagonists (e.g., Alex Mercer, Taylor Cruz, Jordan Hayes)
+- Organization: Groups, teams, agencies, factions (e.g., Paranormal Military Squad, secret organizations)
+- Location: Places, settings, environments (e.g., briefing room, Dulce base, laboratory)
+- Technology: Devices, equipment, scientific tools (e.g., monitors, alien technology, comms system)
+- Concept: Abstract ideas, themes, missions (e.g., Operation: Dulce, anomalies, protocols)
+- Object: Physical items, artifacts, props (e.g., folder, table, screens)
+- Event: Occurrences, incidents, plot points (e.g., briefing, transmission, crash site)
 
-RELATIONSHIP TYPES (use only these):
-- ACHIEVES: Organization → Goal (an organization achieves a goal)
-- USES: Product → Material (a product uses a material)
-- REDUCES: Initiative → Metric (an initiative reduces a metric)
-- CONTAINS: Product → Material (a product contains a material)
-- IMPLEMENTS: Organization → Initiative (an organization implements an initiative)
-- LOCATED_IN: Initiative → Location (an initiative is located in a location)
-- PARTNERS_WITH: Organization → Organization (organizations partner together)
-- PRODUCES: Organization → Product (an organization produces a product)
-- MEASURES: Metric → Goal (a metric measures progress toward a goal)
-- TARGETS: Goal → Metric (a goal targets a specific metric)
+RELATIONSHIP TYPES (use only these for fictional content):
+- WORKS_FOR: Character → Organization (a character works for an organization)
+- LOCATED_AT: Character/Organization → Location (someone/something is located at a place)
+- USES: Character → Technology/Object (a character uses technology or objects)
+- INTERACTS_WITH: Character → Character (characters interact with each other)
+- PART_OF: Character → Organization (a character is part of an organization)
+- INVOLVED_IN: Character → Event (a character is involved in an event)
+- RELATED_TO: Any entity → Any entity (general relationship when specific type doesn't fit)
+- LEADS: Character → Organization/Team (a character leads a group)
+- OWNS: Character → Object/Technology (a character owns something)
+- PARTICIPATES_IN: Character → Event (a character participates in an event)
 
-EXTRACTION RULES:
-1. Extract only entities that are explicitly mentioned in the text
-2. Extract only relationships that are explicitly stated or strongly implied
-3. Use exact names from the text when possible
-4. Assign the most specific entity type from the allowed list
-5. Assign the most appropriate relationship type from the allowed list
+EXTRACTION RULES FOR FICTIONAL CONTENT:
+1. Extract characters by their full names when available (e.g., "Alex Mercer" not just "Alex")
+2. Focus on main characters and important supporting characters
+3. Extract locations that are significant to the plot
+4. Extract organizations and groups that play a role in the story
+5. Extract relationships that show character interactions and plot development
 6. **Description Rules:**
-   - For entities: description must be directly extracted from the text and accurately reflect the entity's context in the original content
-   - For relationships: description must be directly extracted from the text and explain the nature of the relationship as stated in the original content
+   - For characters: describe their role, personality traits, or actions in the story
+   - For organizations: describe their purpose or role in the narrative
+   - For locations: describe their significance or atmosphere in the story
    - **NEVER invent or add information that is not present in the text**
-   - Description should be concise and relevant, focusing on the entity's or relationship's role in the text
-7. **Number/Metric Rules:**
-   - Do NOT extract isolated numbers, amounts, or percentages as Metric entities
-   - Only extract metrics when they have clear context and meaning (e.g., "carbon emissions reduced by 35%" → "carbon emissions" is a Metric with value 35%)
-   - Numbers without context (e.g., "$100", "50%", "2025") should NOT be extracted as separate entities
-   - Numbers should be included as part of the entity's description or relationship's description when relevant
+   - Keep descriptions concise and directly based on the text
+7. **Context Rules:**
+   - Focus on entities that are relevant to the story's plot and characters
+   - Extract relationships that show character dynamics and plot connections
+   - Pay attention to dialogue and character interactions
 8. Do not hallucinate entities or relationships not present in the text
 9. Return results in JSON object with the following OUTPUT FORMAT structure (replace the placeholder values with actual extracted entities and relationships):
 {

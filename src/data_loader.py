@@ -1,5 +1,6 @@
 import re
-from typing import List, Dict, Any
+import json
+from typing import List, Dict, Any, Union
 from pathlib import Path
 
 
@@ -17,11 +18,28 @@ class DataLoader:
         self.file_path = Path(file_path)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        
+    def detect_file_format(self) -> str:
+        """检测文件格式"""
+        file_extension = self.file_path.suffix.lower()
+        if file_extension == '.json':
+            return 'json'
+        elif file_extension in ['.md', '.markdown', '.txt']:
+            return 'markdown'
+        else:
+            # 默认尝试markdown格式
+            return 'markdown'
 
     def load_markdown(self) -> str:
         with open(self.file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         return content
+
+    def load_json(self) -> List[Dict[str, Any]]:
+        """加载JSON格式的数据"""
+        with open(self.file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data
 
     def clean_text(self, text: str) -> str:
         text = re.sub(r'Image /page/\d+/Picture/\d+ description: \{.*?\}', '', text, flags=re.DOTALL)
@@ -45,6 +63,37 @@ class DataLoader:
         
         if current_section["content"].strip():
             sections.append(current_section)
+        
+        return sections
+
+    def process_json_data(self, data: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        """处理JSON数据，转换为章节格式"""
+        sections = []
+        
+        for item in data:
+            # 提取章节信息
+            item_id = item.get('id', 'unknown')
+            text_content = item.get('text', '')
+            metadata = item.get('metadata', {})
+            
+            # 从文本中提取标题（如果有markdown标题格式）
+            lines = text_content.split('\n')
+            title = f"Chapter {item_id}"  # 默认标题
+            
+            # 查找第一个标题行
+            for line in lines:
+                if line.startswith('#'):
+                    title = re.sub(r'^#+\s*', '', line).strip()
+                    break
+            
+            # 清理文本内容
+            cleaned_text = self.clean_text(text_content)
+            
+            sections.append({
+                "title": title,
+                "content": cleaned_text,
+                "metadata": metadata
+            })
         
         return sections
 
@@ -89,15 +138,28 @@ class DataLoader:
         return chunks, next_chunk_id
 
     def load_and_chunk(self) -> List[DataChunk]:
-        raw_text = self.load_markdown()
-        cleaned_text = self.clean_text(raw_text)
-        sections = self.split_by_headers(cleaned_text)
+        """加载并分块数据，支持多种文件格式"""
+        file_format = self.detect_file_format()
+        
+        if file_format == 'json':
+            # 处理JSON格式数据
+            json_data = self.load_json()
+            sections = self.process_json_data(json_data)
+        else:
+            # 处理Markdown格式数据
+            raw_text = self.load_markdown()
+            cleaned_text = self.clean_text(raw_text)
+            sections = self.split_by_headers(cleaned_text)
         
         all_chunks = []
         global_chunk_count = 0
         
         for section in sections:
-            chunks, chunk_count = self.chunk_text(section["content"], section["title"], global_chunk_count)
+            # 提取章节内容，支持不同的section格式
+            content = section.get("content", "")
+            title = section.get("title", "Unknown")
+            
+            chunks, chunk_count = self.chunk_text(content, title, global_chunk_count)
             all_chunks.extend(chunks)
             global_chunk_count = chunk_count
         
