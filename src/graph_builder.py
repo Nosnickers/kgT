@@ -36,7 +36,8 @@ class GraphBuilder:
         chunks: Optional[List[DataChunk]] = None,  # 数据块列表（可选）
         show_progress: bool = True,                # 是否显示进度条（默认True）
         clear_database: bool = True,               # 是否清空数据库（默认True）
-        batch_process_size: int = 10               # 每处理多少个chunk后写入数据库
+        batch_process_size: int = 10,              # 每处理多少个chunk后写入数据库
+        csv_output_prefix: Optional[str] = None    # 输出csv文件前缀，与日志文件名保持一致
     ) -> Dict[str, Any]:
         import logging
         
@@ -50,6 +51,10 @@ class GraphBuilder:
         if chunks is None:
             logging.info("正在加载和分块数据...")
             chunks = self.data_loader.load_and_chunk()
+            
+            # 如果提供了csv输出前缀，则将数据块保存为csv文件
+            if csv_output_prefix:
+                self.data_loader.save_chunks_to_csv(chunks, csv_output_prefix)
 
         total_chunks = len(chunks)
         logging.info(f"正在处理 {total_chunks} 个数据块，每 {batch_process_size} 个数据块写入一次数据库...")
@@ -72,6 +77,9 @@ class GraphBuilder:
         
         # 遍历每个数据块
         for i, chunk in enumerate(chunks_iter, 1):
+            # 获取当前chunk的ID
+            chunk_id = chunk.metadata.get("chunk_id", i-1)
+            
             # 带重试机制的实体提取
             result = self._extract_with_retry(chunk)
             extraction_results.append(result)
@@ -85,11 +93,11 @@ class GraphBuilder:
                 
                 entity_key = (entity_name, entity_type)  # 使用清理后的名称和类型作为唯一键
                 if entity_key not in all_entities:
-                    # 创建新的Entity对象并添加到字典中
+                    # 创建新的Entity对象并添加到字典中，包含chunk_id属性
                     entity_obj = Entity(
                         name=entity_name,
                         type=entity_type,
-                        properties={"description": entity_desc}
+                        properties={"description": entity_desc, "chunk_id": chunk_id}
                     )
                     all_entities[entity_key] = entity_obj
                     new_entities[entity_key] = entity_obj  # 记录为新增实体
@@ -102,12 +110,12 @@ class GraphBuilder:
                 rel_type = rel.type.strip('"\'')
                 rel_desc = rel.description.strip('"\'') if rel.description else ""
                 
-                # 创建新的Relationship对象并添加到列表中
+                # 创建新的Relationship对象并添加到列表中，包含chunk_id属性
                 temp_relationships.append(Relationship(
                     source=rel_source,
                     target=rel_target,
                     type=rel_type,
-                    properties={"description": rel_desc}
+                    properties={"description": rel_desc, "chunk_id": chunk_id}
                 ))
             
             # 每处理batch_process_size个chunk或处理完所有chunk后，写入数据库

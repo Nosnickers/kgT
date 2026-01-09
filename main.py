@@ -86,7 +86,7 @@ def print_config(config: Config):
     logging.info("=" * 60 + "\n")
 
 
-def build_graph(config: Config, clear_db: bool = True):
+def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = None):
     logging.info("Initializing components...")
     
     data_loader = DataLoader(
@@ -125,7 +125,8 @@ def build_graph(config: Config, clear_db: bool = True):
         stats = graph_builder.build_graph(
             show_progress=True, 
             clear_database=clear_db,
-            batch_process_size=config.processing.batch_process_size
+            batch_process_size=config.processing.batch_process_size,
+            csv_output_prefix=csv_output_prefix
         )
         
         logging.info("\n" + "=" * 60)
@@ -270,6 +271,10 @@ def main():
     log_file = configure_logging(args.log_file)
     logging.info(f"Logging to file: {log_file}")
     
+    # 提取日志文件名前缀，用于csv输出
+    import os
+    csv_output_prefix = os.path.splitext(log_file)[0] if log_file else None
+    
     print_banner()
     
     try:
@@ -310,7 +315,7 @@ def main():
             )
         
         if args.build:
-            build_graph(config, clear_db=not args.no_clear)
+            build_graph(config, clear_db=not args.no_clear, csv_output_prefix=csv_output_prefix)
         
         if args.query:
             if not graph_builder:

@@ -24,6 +24,8 @@ class ExtractedEntity(BaseModel):
     type: str = Field(description="实体的类型（Organization, Product, Material, Goal, Metric, Initiative, Location等）")
     # 实体的简要描述（可选）
     description: Optional[str] = Field(default="", description="实体的简要描述")
+    # 实体来源的chunk ID（可选）
+    chunk_id: Optional[int] = Field(default=None, description="实体来源的chunk ID")
 
 
 # 定义提取的关系数据模型
@@ -36,6 +38,8 @@ class ExtractedRelationship(BaseModel):
     type: str = Field(description="关系的类型（ACHIEVES, USES, REDUCES, CONTAINS, IMPLEMENTS, LOCATED_IN等）")
     # 关系的简要描述（可选）
     description: Optional[str] = Field(default="", description="关系的简要描述")
+    # 关系来源的chunk ID（可选）
+    chunk_id: Optional[int] = Field(default=None, description="关系来源的chunk ID")
 
 
 # 定义实体提取结果的数据模型

@@ -48,11 +48,11 @@ class DataLoader:
         
         return sections
 
-    def chunk_text(self, text: str, title: str = "") -> List[DataChunk]:
+    def chunk_text(self, text: str, title: str = "", start_chunk_id: int = 0) -> List[DataChunk]:
         chunks = []
         words = text.split()
         current_chunk = ""
-        chunk_count = 0
+        chunk_count = start_chunk_id
         
         for i, word in enumerate(words):
             if len(current_chunk) + len(word) + 1 > self.chunk_size:
@@ -81,8 +81,9 @@ class DataLoader:
                     "word_count": len(current_chunk.split())
                 }
             ))
+            chunk_count += 1
         
-        return chunks
+        return chunks, chunk_count
 
     def load_and_chunk(self) -> List[DataChunk]:
         raw_text = self.load_markdown()
@@ -90,9 +91,12 @@ class DataLoader:
         sections = self.split_by_headers(cleaned_text)
         
         all_chunks = []
+        global_chunk_count = 0
+        
         for section in sections:
-            chunks = self.chunk_text(section["content"], section["title"])
+            chunks, chunk_count = self.chunk_text(section["content"], section["title"], global_chunk_count)
             all_chunks.extend(chunks)
+            global_chunk_count = chunk_count
         
         return all_chunks
 
@@ -114,3 +118,36 @@ class DataLoader:
             "avg_words_per_chunk": avg_words,
             "sections": sections
         }
+
+    def save_chunks_to_csv(self, chunks: List[DataChunk], output_prefix: str) -> None:
+        """
+        将数据块保存为csv文件
+        
+        Args:
+            chunks: 数据块列表
+            output_prefix: 输出文件名前缀，与日志文件名保持一致
+        """
+        import pandas as pd
+        import logging
+        
+        # 准备csv数据
+        csv_data = []
+        for chunk in chunks:
+            csv_data.append({
+                "content": chunk.content,
+                "title": chunk.metadata.get("title", ""),
+                "chunk_id": chunk.metadata.get("chunk_id", 0),
+                "word_count": chunk.metadata.get("word_count", 0)
+            })
+        
+        # 创建DataFrame
+        df = pd.DataFrame(csv_data)
+        
+        # 生成输出文件名
+        output_file = f"{output_prefix}.csv"
+        
+        # 保存为csv文件
+        df.to_csv(output_file, index=False, encoding='utf-8')
+        
+        # 记录保存信息
+        logging.info(f"已将 {len(chunks)} 个数据块保存到 {output_file}")
