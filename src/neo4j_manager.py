@@ -133,9 +133,18 @@ class Neo4jManager:
                 query = """
                 MERGE (e:Entity {name: $name, type: $type})
                 ON CREATE SET e += $properties
-                ON MATCH SET 
-                    e.description = COALESCE($properties.description, e.description),
-                    e.chunk_id = $properties.chunk_id
+                ON MATCH SET e += {
+                    description: CASE 
+                        WHEN $properties.description <> '' AND $properties.description IS NOT NULL 
+                        THEN $properties.description 
+                        ELSE e.description 
+                    END,
+                    chunk_id: CASE 
+                        WHEN e.chunk_id IS NULL THEN $properties.chunk_id
+                        WHEN $properties.chunk_id IS NULL THEN e.chunk_id
+                        ELSE [x IN e.chunk_id + $properties.chunk_id WHERE NOT x IN e.chunk_id | x] + e.chunk_id
+                    END
+                }
                 """
                 session.run(
                     query,
@@ -169,9 +178,18 @@ class Neo4jManager:
                 MATCH (target:Entity {name: $target})
                 MERGE (source)-[r:RELATIONSHIP {type: $type}]->(target)
                 ON CREATE SET r += $properties
-                ON MATCH SET 
-                    r.description = COALESCE($properties.description, r.description),
-                    r.chunk_id = $properties.chunk_id
+                ON MATCH SET r += {
+                    description: CASE 
+                        WHEN $properties.description <> '' AND $properties.description IS NOT NULL 
+                        THEN $properties.description 
+                        ELSE r.description 
+                    END,
+                    chunk_id: CASE 
+                        WHEN r.chunk_id IS NULL THEN $properties.chunk_id
+                        WHEN $properties.chunk_id IS NULL THEN r.chunk_id
+                        ELSE [x IN r.chunk_id + $properties.chunk_id WHERE NOT x IN r.chunk_id | x] + r.chunk_id
+                    END
+                }
                 """
                 session.run(
                     query,

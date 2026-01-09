@@ -83,7 +83,10 @@ class DataLoader:
             ))
             chunk_count += 1
         
-        return chunks, chunk_count
+        # 返回下一个可用的chunk_id，而不是当前chunk_count
+        # 如果没有创建任何chunk，返回start_chunk_id
+        next_chunk_id = chunk_count if chunks else start_chunk_id
+        return chunks, next_chunk_id
 
     def load_and_chunk(self) -> List[DataChunk]:
         raw_text = self.load_markdown()

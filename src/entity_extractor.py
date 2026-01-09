@@ -126,24 +126,26 @@ EXTRACTION RULES:
    - Numbers without context (e.g., "$100", "50%", "2025") should NOT be extracted as separate entities
    - Numbers should be included as part of the entity's description or relationship's description when relevant
 8. Do not hallucinate entities or relationships not present in the text
-9. Return results in JSON object with the following OUTPUT FORMAT structure:
+9. Return results in JSON object with the following OUTPUT FORMAT structure (replace the placeholder values with actual extracted entities and relationships):
 {
   "entities": [
     {
-      "name": "entity_name",
-      "type": "entity_type",
-      "description": "brief description"
+      "name": "actual_entity_name_from_text",
+      "type": "appropriate_entity_type",
+      "description": "actual_description_from_text"
     }
   ],
   "relationships": [
     {
-      "source": "source_entity_name",
-      "target": "target_entity_name",
-      "type": "relationship_type",
-      "description": "brief description"
+      "source": "actual_source_entity_name",
+      "target": "actual_target_entity_name",
+      "type": "appropriate_relationship_type",
+      "description": "actual_relationship_description"
     }
   ]
-}"""
+}
+
+IMPORTANT: DO NOT use the placeholder values shown above. Extract actual entity names, types, and descriptions from the provided text."""
         
         # 如果启用深度思考模式，添加更详细的思考步骤
         if self.deep_thought_mode:
