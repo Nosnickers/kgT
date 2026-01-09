@@ -12,9 +12,10 @@ class Neo4jConfig(BaseModel):
 
 class OllamaConfig(BaseModel):
     base_url: str = Field(default="http://localhost:11434")
-    model: str = Field(default="mistral:7b-instruct-v0.3-q4_0")
+    model: str = Field(default="deepseek-r1:8b")
     temperature: float = Field(default=0.1)
     num_ctx: int = Field(default=4096)
+    deep_thought_mode: bool = Field(default=False)  # 是否启用深度思考模式
 
 
 class DataConfig(BaseModel):
@@ -49,7 +50,8 @@ class Config(BaseModel):
                 base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
                 model=os.getenv("OLLAMA_MODEL", "mistral:7b-instruct-v0.3-q4_0"),
                 temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.1")),
-                num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "4096"))
+                num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "4096")),
+                deep_thought_mode=os.getenv("OLLAMA_DEEP_THOUGHT_MODE", "false").lower() == "true"
             ),
             data=DataConfig(
                 file_path=os.getenv("DATA_FILE", "data/Apple_Environmental_Progress_Report_2024.md"),

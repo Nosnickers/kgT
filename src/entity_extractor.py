@@ -61,7 +61,7 @@ class EntityExtractor:
     ]
 
     # 初始化实体提取器
-    def __init__(self, base_url: str, model: str, temperature: float = 0.1, num_ctx: int = 4096):
+    def __init__(self, base_url: str, model: str, temperature: float = 0.1, num_ctx: int = 4096, deep_thought_mode: bool = False):
         # 创建Ollama聊天模型实例
         self.llm = ChatOllama(
             base_url=base_url,  # Ollama服务器地址
@@ -71,11 +71,13 @@ class EntityExtractor:
         )
         # 创建JSON输出解析器
         self.parser = JsonOutputParser(pydantic_object=ExtractionResult)
+        # 是否启用深度思考模式
+        self.deep_thought_mode = deep_thought_mode
 
     # 创建实体和关系提取的提示模板
     def create_extraction_prompt(self) -> ChatPromptTemplate:
-        # 系统提示，定义LLM的角色和任务
-        system_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from environmental and business reports.
+        # 基础提示模板
+        base_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from environmental and business reports.
 
 Your task is to extract entities and relationships from the given text and return them in a structured JSON format.
 
@@ -138,6 +140,28 @@ EXTRACTION RULES:
     }
   ]
 }"""
+        
+        # 如果启用深度思考模式，添加更详细的思考步骤
+        if self.deep_thought_mode:
+            deep_thought_prefix = """**DEEP THOUGHT MODE ENABLED**
+
+Please follow these detailed thinking steps to ensure comprehensive and accurate extraction:
+
+1. **First Pass Analysis:** Read through the entire text carefully and identify the main topics and themes
+2. **Entity Identification:** Systematically scan each sentence and phrase to identify potential entities
+3. **Context Validation:** For each identified entity, verify it has clear context and meaning in the text
+4. **Type Assignment:** Assign the most appropriate entity type from the allowed list, considering the entity's role and context
+5. **Relationship Detection:** Analyze how entities interact with each other to identify relationships
+6. **Direction Verification:** Ensure relationship directions are correct (e.g., Organization → Goal, not the other way around)
+7. **Description Generation:** For each entity and relationship, create concise, accurate descriptions directly from the text
+8. **Final Review:** Double-check all extractions to ensure they meet the rules and requirements
+
+Take your time to analyze the text thoroughly and provide the most accurate extraction possible.
+
+"""
+            system_prompt = deep_thought_prefix + base_prompt
+        else:
+            system_prompt = base_prompt
 
         # 用户提示，提供要提取的文本
         human_prompt = """Extract entities and relationships from the following text:

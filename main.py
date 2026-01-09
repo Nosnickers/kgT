@@ -105,7 +105,8 @@ def build_graph(config: Config, clear_db: bool = True):
         base_url=config.ollama.base_url,
         model=config.ollama.model,
         temperature=config.ollama.temperature,
-        num_ctx=config.ollama.num_ctx
+        num_ctx=config.ollama.num_ctx,
+        deep_thought_mode=config.ollama.deep_thought_mode
     )
     
     graph_builder = GraphBuilder(
@@ -296,7 +297,8 @@ def main():
                 base_url=config.ollama.base_url,
                 model=config.ollama.model,
                 temperature=config.ollama.temperature,
-                num_ctx=config.ollama.num_ctx
+                num_ctx=config.ollama.num_ctx,
+                deep_thought_mode=config.ollama.deep_thought_mode
             )
             
             graph_builder = GraphBuilder(
