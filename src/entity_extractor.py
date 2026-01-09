@@ -172,13 +172,46 @@ Return the extraction result in JSON format."""
             # 解析JSON数据
             result_data = json.loads(content)
             
+            # 清理实体和关系数据中的多余引号
+            def clean_entity_data(entity_data):
+                if 'name' in entity_data:
+                    entity_data['name'] = entity_data['name'].strip('"\'')
+                if 'type' in entity_data:
+                    entity_data['type'] = entity_data['type'].strip('"\'')
+                if 'description' in entity_data and entity_data['description']:
+                    entity_data['description'] = entity_data['description'].strip('"\'')
+                return entity_data
+            
+            def clean_relationship_data(rel_data):
+                if 'source' in rel_data:
+                    rel_data['source'] = rel_data['source'].strip('"\'')
+                if 'target' in rel_data:
+                    rel_data['target'] = rel_data['target'].strip('"\'')
+                if 'type' in rel_data:
+                    rel_data['type'] = rel_data['type'].strip('"\'')
+                if 'description' in rel_data and rel_data['description']:
+                    rel_data['description'] = rel_data['description'].strip('"\'')
+                return rel_data
+            
+            # 清理实体数据
+            cleaned_entities = []
+            for entity in result_data.get("entities", []):
+                cleaned_entity = clean_entity_data(entity)
+                cleaned_entities.append(cleaned_entity)
+            
+            # 清理关系数据
+            cleaned_relationships = []
+            for rel in result_data.get("relationships", []):
+                cleaned_rel = clean_relationship_data(rel)
+                cleaned_relationships.append(cleaned_rel)
+            
             # 转换为实体对象列表
             entities = [
-                ExtractedEntity(**entity) for entity in result_data.get("entities", [])
+                ExtractedEntity(**entity) for entity in cleaned_entities
             ]
             # 转换为关系对象列表
             relationships = [
-                ExtractedRelationship(**rel) for rel in result_data.get("relationships", [])
+                ExtractedRelationship(**rel) for rel in cleaned_relationships
             ]
             
             # 返回提取结果对象

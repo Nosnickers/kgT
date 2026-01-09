@@ -44,8 +44,19 @@ class Neo4jManager:
     def create_constraints(self):
         import logging
         with self.driver.session() as session:
+            # 删除旧的唯一约束（只基于name的约束）
+            try:
+                # 先检查约束是否存在，然后删除
+                result = session.run("SHOW CONSTRAINTS")
+                constraints = [record["name"] for record in result]
+                if "entity_name" in constraints:
+                    session.run("DROP CONSTRAINT entity_name")
+            except Exception as e:
+                logging.warning(f"Constraint drop warning: {e}")
+            
+            # 创建新的复合唯一约束（基于name和type）
             constraints = [
-                "CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (n:Entity) REQUIRE n.name IS UNIQUE",
+                "CREATE CONSTRAINT entity_name_type IF NOT EXISTS FOR (n:Entity) REQUIRE (n.name, n.type) IS UNIQUE",
                 "CREATE CONSTRAINT entity_type IF NOT EXISTS FOR (n:Entity) REQUIRE n.type IS NOT NULL"
             ]
             for constraint in constraints:
@@ -56,6 +67,13 @@ class Neo4jManager:
 
     def create_entity(self, entity: Entity) -> bool:
         with self.driver.session() as session:
+            # 清理实体数据，去除两端的引号
+            entity_name = entity.name.strip('"\'')
+            entity_type = entity.type.strip('"\'')
+            entity_properties = entity.properties.copy()
+            if 'description' in entity_properties and entity_properties['description']:
+                entity_properties['description'] = entity_properties['description'].strip('"\'')
+            
             query = """
             MERGE (e:Entity {name: $name, type: $type})
             SET e += $properties
@@ -63,14 +81,22 @@ class Neo4jManager:
             """
             result = session.run(
                 query,
-                name=entity.name,
-                type=entity.type,
-                properties=entity.properties
+                name=entity_name,
+                type=entity_type,
+                properties=entity_properties
             )
             return result.single() is not None
 
     def create_relationship(self, relationship: Relationship) -> bool:
         with self.driver.session() as session:
+            # 清理关系数据，去除两端的引号
+            rel_source = relationship.source.strip('"\'')
+            rel_target = relationship.target.strip('"\'')
+            rel_type = relationship.type.strip('"\'')
+            rel_properties = relationship.properties.copy()
+            if 'description' in rel_properties and rel_properties['description']:
+                rel_properties['description'] = rel_properties['description'].strip('"\'')
+            
             query = """
             MATCH (source:Entity {name: $source})
             MATCH (target:Entity {name: $target})
@@ -80,10 +106,10 @@ class Neo4jManager:
             """
             result = session.run(
                 query,
-                source=relationship.source,
-                target=relationship.target,
-                type=relationship.type,
-                properties=relationship.properties
+                source=rel_source,
+                target=rel_target,
+                type=rel_type,
+                properties=rel_properties
             )
             return result.single() is not None
 
@@ -91,15 +117,22 @@ class Neo4jManager:
         created = 0
         with self.driver.session() as session:
             for entity in entities:
+                # 清理实体数据，去除两端的引号
+                entity_name = entity.name.strip('"\'')
+                entity_type = entity.type.strip('"\'')
+                entity_properties = entity.properties.copy()
+                if 'description' in entity_properties and entity_properties['description']:
+                    entity_properties['description'] = entity_properties['description'].strip('"\'')
+                
                 query = """
                 MERGE (e:Entity {name: $name, type: $type})
                 SET e += $properties
                 """
                 session.run(
                     query,
-                    name=entity.name,
-                    type=entity.type,
-                    properties=entity.properties
+                    name=entity_name,
+                    type=entity_type,
+                    properties=entity_properties
                 )
                 created += 1
         return created
@@ -108,6 +141,14 @@ class Neo4jManager:
         created = 0
         with self.driver.session() as session:
             for rel in relationships:
+                # 清理关系数据，去除两端的引号
+                rel_source = rel.source.strip('"\'')
+                rel_target = rel.target.strip('"\'')
+                rel_type = rel.type.strip('"\'')
+                rel_properties = rel.properties.copy()
+                if 'description' in rel_properties and rel_properties['description']:
+                    rel_properties['description'] = rel_properties['description'].strip('"\'')
+                
                 query = """
                 MATCH (source:Entity {name: $source})
                 MATCH (target:Entity {name: $target})
@@ -116,10 +157,10 @@ class Neo4jManager:
                 """
                 session.run(
                     query,
-                    source=rel.source,
-                    target=rel.target,
-                    type=rel.type,
-                    properties=rel.properties
+                    source=rel_source,
+                    target=rel_target,
+                    type=rel_type,
+                    properties=rel_properties
                 )
                 created += 1
         return created

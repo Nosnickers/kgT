@@ -56,6 +56,8 @@ class GraphBuilder:
         
         # 存储所有实体（去重）
         all_entities = {}
+        # 存储当前批次新增的实体
+        new_entities = {}
         # 存储临时关系
         temp_relationships = []
         # 存储所有提取结果
@@ -76,23 +78,36 @@ class GraphBuilder:
             
             # 处理提取的实体
             for entity in result.entities:
-                entity_key = (entity.name, entity.type)  # 使用名称和类型作为唯一键
+                # 清理实体名称和类型，去除两端的引号
+                entity_name = entity.name.strip('"\'')
+                entity_type = entity.type.strip('"\'')
+                entity_desc = entity.description.strip('"\'') if entity.description else ""
+                
+                entity_key = (entity_name, entity_type)  # 使用清理后的名称和类型作为唯一键
                 if entity_key not in all_entities:
                     # 创建新的Entity对象并添加到字典中
-                    all_entities[entity_key] = Entity(
-                        name=entity.name,
-                        type=entity.type,
-                        properties={"description": entity.description or ""}
+                    entity_obj = Entity(
+                        name=entity_name,
+                        type=entity_type,
+                        properties={"description": entity_desc}
                     )
+                    all_entities[entity_key] = entity_obj
+                    new_entities[entity_key] = entity_obj  # 记录为新增实体
             
             # 处理提取的关系
             for rel in result.relationships:
+                # 清理关系数据，去除两端的引号
+                rel_source = rel.source.strip('"\'')
+                rel_target = rel.target.strip('"\'')
+                rel_type = rel.type.strip('"\'')
+                rel_desc = rel.description.strip('"\'') if rel.description else ""
+                
                 # 创建新的Relationship对象并添加到列表中
                 temp_relationships.append(Relationship(
-                    source=rel.source,
-                    target=rel.target,
-                    type=rel.type,
-                    properties={"description": rel.description or ""}
+                    source=rel_source,
+                    target=rel_target,
+                    type=rel_type,
+                    properties={"description": rel_desc}
                 ))
             
             # 每处理batch_process_size个chunk或处理完所有chunk后，写入数据库
@@ -100,14 +115,17 @@ class GraphBuilder:
                 current_batch = i // batch_process_size if i % batch_process_size == 0 else i // batch_process_size + 1
                 logging.info(f"\n批次 {current_batch}: 处理完 {i} 个数据块，准备写入数据库...")
                 
-                # 将当前批次的实体存储到Neo4j
-                logging.info(f"批次 {current_batch}: 正在将 {len(all_entities)} 个实体存储到Neo4j...")
-                entity_list = list(all_entities.values())
-                entities_created = self._batch_create_with_retry(
-                    entity_list,
-                    self.neo4j_manager.batch_create_entities
-                )
-                total_entities_created += entities_created
+                # 将当前批次的新增实体存储到Neo4j
+                if new_entities:
+                    logging.info(f"批次 {current_batch}: 正在将 {len(new_entities)} 个新增实体存储到Neo4j...")
+                    entity_list = list(new_entities.values())
+                    entities_created = self._batch_create_with_retry(
+                        entity_list,
+                        self.neo4j_manager.batch_create_entities
+                    )
+                    total_entities_created += entities_created
+                else:
+                    logging.info(f"批次 {current_batch}: 没有新增实体需要存储")
                 
                 # 将当前批次的关系存储到Neo4j
                 logging.info(f"批次 {current_batch}: 正在将 {len(temp_relationships)} 个关系存储到Neo4j...")
@@ -117,8 +135,9 @@ class GraphBuilder:
                 )
                 total_relationships_created += relationships_created
                 
-                # 清空临时关系列表，但保留实体字典用于后续去重
+                # 清空临时关系列表和新增实体字典
                 temp_relationships = []
+                new_entities = {}
                 
                 logging.info(f"批次 {current_batch}: 写入完成，已处理 {i}/{total_chunks} 个数据块")
         
