@@ -258,6 +258,13 @@ Return the extraction result in JSON format."""
         # 去除首尾空白字符
         content = content.strip()
         
+        # 处理包含<think>标签的响应
+        if "<think>" in content:
+            # 移除<think>和</think>标签，以及标签内的内容
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+            # 去除可能的空白字符
+            content = content.strip()
+        
         # 如果包含```json标记，则提取标记内的内容
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
@@ -267,16 +274,40 @@ Return the extraction result in JSON format."""
         
         # 寻找JSON数据的开始位置 - 找到第一个'{'字符
         json_start = content.find('{')
-        if json_start != -1:
-            content = content[json_start:]
+        if json_start == -1:
+            # 没有找到JSON数据的开始位置，返回空JSON
+            return "{}"
         
-        # 修复可能的JSON格式问题
-        if not content.startswith('{'):
-            content = '{' + content
-        if not content.endswith('}'):
-            content = content + '}'
+        # 从第一个'{'开始提取内容
+        content = content[json_start:]
         
-        return content
+        # 寻找JSON数据的结束位置 - 正确匹配括号
+        brace_count = 0
+        json_end = -1
+        for i, char in enumerate(content):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    json_end = i + 1
+                    break
+        
+        if json_end == -1:
+            # 没有找到匹配的结束括号，返回空JSON
+            return "{}"
+        
+        # 提取有效的JSON部分
+        content = content[:json_end]
+        
+        # 验证提取的内容是否为有效的JSON
+        try:
+            import json
+            json.loads(content)
+            return content
+        except json.JSONDecodeError:
+            # 如果不是有效的JSON，返回空JSON
+            return "{}"
 
     # 批量提取多个文本的实体和关系
     def extract_batch(self, texts: List[str]) -> List[ExtractionResult]:
