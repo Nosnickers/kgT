@@ -2,6 +2,8 @@
 import json
 # 导入正则表达式模块
 import re
+# 导入日志模块
+import logging
 # 导入类型注解相关模块
 from typing import List, Dict, Any, Optional
 # 导入LangChain的Ollama聊天模型
@@ -180,81 +182,179 @@ Return the extraction result in JSON format."""
             HumanMessage(content=human_prompt)      # 用户消息
         ])
 
-    # 从文本中提取实体和关系
-    def extract(self, text: str) -> ExtractionResult:
-        # 创建提取提示
-        prompt = self.create_extraction_prompt()
+    # 验证实体数据的必填字段
+    def _validate_entity_data(self, entity_data: Dict[str, Any]) -> bool:
+        """验证实体数据的必填字段"""
+        # 检查必填字段是否存在
+        if not entity_data.get('name') or not entity_data.get('name').strip():
+            logging.error(f"实体数据缺少必填字段 'name': {entity_data}")
+            return False
         
-        # 格式化提示消息
-        formatted_prompt = prompt.format_messages(text=text)
+        if not entity_data.get('type') or not entity_data.get('type').strip():
+            logging.error(f"实体数据缺少必填字段 'type': {entity_data}")
+            return False
         
-        try:
-            # 调用LLM进行提取
-            response = self.llm.invoke(formatted_prompt)
-            content = response.content
-            
-            # 清理JSON响应内容
-            content = self.clean_json_response(content)
-            
-            # 解析JSON数据
-            result_data = json.loads(content)
-            
-            # 清理实体和关系数据中的多余引号
-            def clean_entity_data(entity_data):
-                if 'name' in entity_data:
-                    entity_data['name'] = entity_data['name'].strip('"\'')
-                if 'type' in entity_data:
-                    entity_data['type'] = entity_data['type'].strip('"\'')
-                if 'description' in entity_data and entity_data['description']:
-                    entity_data['description'] = entity_data['description'].strip('"\'')
-                return entity_data
-            
-            def clean_relationship_data(rel_data):
-                if 'source' in rel_data:
-                    rel_data['source'] = rel_data['source'].strip('"\'')
-                if 'target' in rel_data:
-                    rel_data['target'] = rel_data['target'].strip('"\'')
-                if 'type' in rel_data:
-                    rel_data['type'] = rel_data['type'].strip('"\'')
-                if 'description' in rel_data and rel_data['description']:
-                    rel_data['description'] = rel_data['description'].strip('"\'')
-                return rel_data
-            
-            # 清理实体数据
-            cleaned_entities = []
-            for entity in result_data.get("entities", []):
-                cleaned_entity = clean_entity_data(entity)
-                cleaned_entities.append(cleaned_entity)
-            
-            # 清理关系数据
-            cleaned_relationships = []
-            for rel in result_data.get("relationships", []):
-                cleaned_rel = clean_relationship_data(rel)
-                cleaned_relationships.append(cleaned_rel)
-            
-            # 转换为实体对象列表
-            entities = [
-                ExtractedEntity(**entity) for entity in cleaned_entities
-            ]
-            # 转换为关系对象列表
-            relationships = [
-                ExtractedRelationship(**rel) for rel in cleaned_relationships
-            ]
-            
-            # 返回提取结果对象
-            return ExtractionResult(entities=entities, relationships=relationships)
-            
-        # 处理JSON解析错误
-        except json.JSONDecodeError as e:
-            import logging
-            logging.error(f"JSON解析错误: {e}")
-            logging.error(f"响应内容: {content}")
-            return ExtractionResult(entities=[], relationships=[])
-        # 处理其他异常
-        except Exception as e:
-            import logging
-            logging.error(f"提取错误: {e}")
-            return ExtractionResult(entities=[], relationships=[])
+        # 检查字段值是否有效
+        name = entity_data['name'].strip()
+        entity_type = entity_data['type'].strip()
+        
+        # 检查名称是否为空或占位符
+        if not name or name.lower() in ['entity_name', 'actual_entity_name_from_text', 'name']:
+            logging.error(f"实体名称无效或为占位符: {name}")
+            return False
+        
+        # 检查类型是否为空或占位符
+        if not entity_type or entity_type.lower() in ['entity_type', 'appropriate_entity_type', 'type']:
+            logging.error(f"实体类型无效或为占位符: {entity_type}")
+            return False
+        
+        return True
+
+    # 验证关系数据的必填字段
+    def _validate_relationship_data(self, rel_data: Dict[str, Any]) -> bool:
+        """验证关系数据的必填字段"""
+        # 检查必填字段是否存在
+        if not rel_data.get('source') or not rel_data.get('source').strip():
+            logging.error(f"关系数据缺少必填字段 'source': {rel_data}")
+            return False
+        
+        if not rel_data.get('target') or not rel_data.get('target').strip():
+            logging.error(f"关系数据缺少必填字段 'target': {rel_data}")
+            return False
+        
+        if not rel_data.get('type') or not rel_data.get('type').strip():
+            logging.error(f"关系数据缺少必填字段 'type': {rel_data}")
+            return False
+        
+        # 检查字段值是否有效
+        source = rel_data['source'].strip()
+        target = rel_data['target'].strip()
+        rel_type = rel_data['type'].strip()
+        
+        # 检查源实体是否为空或占位符
+        if not source or source.lower() in ['source', 'actual_source_entity_name']:
+            logging.error(f"关系源实体无效或为占位符: {source}")
+            return False
+        
+        # 检查目标实体是否为空或占位符
+        if not target or target.lower() in ['target', 'actual_target_entity_name']:
+            logging.error(f"关系目标实体无效或为占位符: {target}")
+            return False
+        
+        # 检查关系类型是否为空或占位符
+        if not rel_type or rel_type.lower() in ['type', 'appropriate_relationship_type']:
+            logging.error(f"关系类型无效或为占位符: {rel_type}")
+            return False
+        
+        # 检查源和目标是否相同
+        if source == target:
+            logging.error(f"关系源和目标实体相同: {source} -> {target}")
+            return False
+        
+        return True
+
+    # 从文本中提取实体和关系（带校验和重试机制）
+    def extract(self, text: str, max_retries: int = 3) -> ExtractionResult:
+        """从文本中提取实体和关系，包含必填字段校验和重试机制"""
+        
+        for attempt in range(max_retries):
+            try:
+                # 创建提取提示
+                prompt = self.create_extraction_prompt()
+                
+                # 格式化提示消息
+                formatted_prompt = prompt.format_messages(text=text)
+                
+                # 调用LLM进行提取
+                response = self.llm.invoke(formatted_prompt)
+                content = response.content
+                
+                # 清理JSON响应内容
+                content = self.clean_json_response(content)
+                
+                # 解析JSON数据
+                result_data = json.loads(content)
+                
+                # 清理实体和关系数据中的多余引号
+                def clean_entity_data(entity_data):
+                    if 'name' in entity_data:
+                        entity_data['name'] = entity_data['name'].strip('"\'')
+                    if 'type' in entity_data:
+                        entity_data['type'] = entity_data['type'].strip('"\'')
+                    if 'description' in entity_data and entity_data['description']:
+                        entity_data['description'] = entity_data['description'].strip('"\'')
+                    return entity_data
+                
+                def clean_relationship_data(rel_data):
+                    if 'source' in rel_data:
+                        rel_data['source'] = rel_data['source'].strip('"\'')
+                    if 'target' in rel_data:
+                        rel_data['target'] = rel_data['target'].strip('"\'')
+                    if 'type' in rel_data:
+                        rel_data['type'] = rel_data['type'].strip('"\'')
+                    if 'description' in rel_data and rel_data['description']:
+                        rel_data['description'] = rel_data['description'].strip('"\'')
+                    return rel_data
+                
+                # 清理实体数据
+                cleaned_entities = []
+                for entity in result_data.get("entities", []):
+                    cleaned_entity = clean_entity_data(entity)
+                    # 验证实体数据
+                    if self._validate_entity_data(cleaned_entity):
+                        cleaned_entities.append(cleaned_entity)
+                    else:
+                        logging.warning(f"跳过无效实体数据: {cleaned_entity}")
+                
+                # 清理关系数据
+                cleaned_relationships = []
+                for rel in result_data.get("relationships", []):
+                    cleaned_rel = clean_relationship_data(rel)
+                    # 验证关系数据
+                    if self._validate_relationship_data(cleaned_rel):
+                        cleaned_relationships.append(cleaned_rel)
+                    else:
+                        logging.warning(f"跳过无效关系数据: {cleaned_rel}")
+                
+                # 检查是否有有效的实体或关系
+                if not cleaned_entities and not cleaned_relationships:
+                    logging.warning(f"第 {attempt + 1} 次尝试未提取到有效数据，进行重试")
+                    continue
+                
+                # 转换为实体对象列表
+                entities = []
+                for entity in cleaned_entities:
+                    try:
+                        entities.append(ExtractedEntity(**entity))
+                    except Exception as e:
+                        logging.error(f"创建实体对象失败: {e}, 数据: {entity}")
+                
+                # 转换为关系对象列表
+                relationships = []
+                for rel in cleaned_relationships:
+                    try:
+                        relationships.append(ExtractedRelationship(**rel))
+                    except Exception as e:
+                        logging.error(f"创建关系对象失败: {e}, 数据: {rel}")
+                
+                # 返回提取结果对象
+                return ExtractionResult(entities=entities, relationships=relationships)
+                
+            # 处理JSON解析错误
+            except json.JSONDecodeError as e:
+                logging.error(f"第 {attempt + 1} 次尝试JSON解析错误: {e}")
+                logging.error(f"响应内容: {content}")
+                if attempt == max_retries - 1:
+                    return ExtractionResult(entities=[], relationships=[])
+            # 处理其他异常
+            except Exception as e:
+                logging.error(f"第 {attempt + 1} 次尝试提取错误: {e}")
+                if attempt == max_retries - 1:
+                    return ExtractionResult(entities=[], relationships=[])
+        
+        # 所有重试都失败
+        logging.error(f"所有 {max_retries} 次尝试均失败")
+        return ExtractionResult(entities=[], relationships=[])
 
     # 清理LLM返回的JSON响应内容
     def clean_json_response(self, content: str) -> str:

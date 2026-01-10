@@ -19,7 +19,7 @@ class OllamaConfig(BaseModel):
 
 
 class DataConfig(BaseModel):
-    file_path: str = Field(default="data/Apple_Environmental_Progress_Report_2024.md")
+    file_path: str = Field(default="data/Dulce.json")
     chunk_size: int = Field(default=2000)
     chunk_overlap: int = Field(default=200)
 
