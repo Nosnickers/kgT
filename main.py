@@ -86,8 +86,15 @@ def print_config(config: Config):
     logging.info("=" * 60 + "\n")
 
 
-def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = None):
+def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = None, enable_llm_logging: bool = False):
     logging.info("Initializing components...")
+    
+    # 如果启用LLM日志记录，创建ChunkLogger
+    logger = None
+    if enable_llm_logging:
+        from test_chunk_22_logging import ChunkLogger
+        logger = ChunkLogger(log_dir="logs")
+        logging.info("LLM详细日志记录已启用")
     
     data_loader = DataLoader(
         file_path=config.data.file_path,
@@ -114,7 +121,8 @@ def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = 
         neo4j_manager=neo4j_manager,
         entity_extractor=entity_extractor,
         max_retries=config.processing.max_retries,
-        retry_delay=config.processing.retry_delay
+        retry_delay=config.processing.retry_delay,
+        logger=logger  # 传递logger给GraphBuilder
     )
     
     logging.info("Connecting to Neo4j...")
@@ -214,51 +222,109 @@ def export_graph(graph_builder: GraphBuilder, output_path: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Build a knowledge graph from unstructured text using LangChain, Ollama, and Neo4j"
+        description="""
+Knowledge Graph Builder from Unstructured Text
+
+This tool builds a knowledge graph from unstructured text using LangChain, Ollama, and Neo4j.
+It extracts entities and relationships from text chunks and stores them in a Neo4j database.
+
+Features:
+- Extract entities (characters, locations, organizations, etc.) from fictional narratives
+- Identify relationships between entities
+- Support for deep thought mode for improved extraction accuracy
+- Detailed LLM logging for debugging and analysis
+- Batch processing with configurable chunk size and overlap
+- Export to CSV and JSON formats
+
+Examples:
+  # Build the knowledge graph with default settings
+  python main.py --build --config .env
+
+  # Build with detailed LLM logging (includes deep thought process)
+  python main.py --build --config .env --enable-llm-logging
+
+  # Build without clearing the database
+  python main.py --build --config .env --no-clear
+
+  # Query information about a specific entity
+  python main.py --query "Alex Mercer" --config .env
+
+  # Show graph summary
+  python main.py --summary --config .env
+
+  # Export graph to JSON
+  python main.py --export output.json --config .env
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
     parser.add_argument(
         "--build",
         action="store_true",
-        help="Build the knowledge graph"
+        help="Build the knowledge graph from the configured data file"
     )
     
     parser.add_argument(
         "--query",
         type=str,
-        help="Query information about a specific entity"
+        help="Query information about a specific entity (e.g., 'Alex Mercer')"
     )
     
     parser.add_argument(
         "--summary",
         action="store_true",
-        help="Show graph summary"
+        help="Show a summary of the knowledge graph (entity counts, relationship counts, type distributions)"
     )
     
     parser.add_argument(
         "--export",
         type=str,
-        help="Export graph to JSON file"
+        help="Export the knowledge graph to a JSON file at the specified path"
     )
     
     parser.add_argument(
         "--no-clear",
         action="store_true",
-        help="Do not clear the database before building"
+        help="Do not clear the database before building (useful for incremental updates)"
     )
     
     parser.add_argument(
         "--config",
         type=str,
         default=".env",
-        help="Path to environment configuration file (default: .env)"
+        help="Path to environment configuration file (default: .env). The file should contain settings for Neo4j, Ollama, and data processing."
     )
     
     parser.add_argument(
         "--log-file",
         type=str,
         default=None,
-        help="Path to log file (default: kg_build_YYYYMMDD_HHMMSS.log)"
+        help="Path to the main log file (default: kg_build_YYYYMMDD_HHMMSS.log). This log contains general build progress and statistics."
+    )
+    
+    parser.add_argument(
+        "--enable-llm-logging",
+        action="store_true",
+        help="""
+Enable detailed LLM logging for entity extraction.
+
+When enabled, this creates a separate detailed log file in the 'logs' directory that records:
+- System prompts sent to the LLM
+- User prompts with text content
+- Raw LLM responses (including deep thought process if enabled)
+- Cleaned JSON responses
+- Parsed JSON data
+- Data validation and cleaning steps
+- Final extraction results with entity and relationship details
+
+This is useful for:
+- Debugging entity extraction issues
+- Analyzing LLM behavior and response patterns
+- Understanding how deep thought mode affects extraction
+- Verifying that entities and relationships are extracted correctly
+
+The detailed log file will be named: chunk_analysis_YYYYMMDD_HHMMSS.log
+        """
     )
     
     args = parser.parse_args()
@@ -311,11 +377,12 @@ def main():
                 neo4j_manager=neo4j_manager,
                 entity_extractor=entity_extractor,
                 max_retries=config.processing.max_retries,
-                retry_delay=config.processing.retry_delay
+                retry_delay=config.processing.retry_delay,
+                logger=None  # main函数中不传递logger，避免重复日志
             )
         
         if args.build:
-            build_graph(config, clear_db=not args.no_clear, csv_output_prefix=csv_output_prefix)
+            build_graph(config, clear_db=not args.no_clear, csv_output_prefix=csv_output_prefix, enable_llm_logging=args.enable_llm_logging)
         
         if args.query:
             if not graph_builder:

@@ -22,13 +22,15 @@ class GraphBuilder:
         neo4j_manager: Neo4jManager,      # Neo4j管理器实例
         entity_extractor: EntityExtractor, # 实体提取器实例
         max_retries: int = 3,             # 最大重试次数（默认3次）
-        retry_delay: int = 2              # 重试延迟时间（默认2秒）
+        retry_delay: int = 2,              # 重试延迟时间（默认2秒）
+        logger: Optional[Any] = None         # 可选的日志记录器
     ):
         self.data_loader = data_loader
         self.neo4j_manager = neo4j_manager
         self.entity_extractor = entity_extractor
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.logger = logger
 
     # 构建知识图谱
     def build_graph(
@@ -200,9 +202,205 @@ class GraphBuilder:
         return stats
 
     # 带重试机制的实体提取
+    # 带日志记录的实体提取方法
+    def _extract_with_logging(self, chunk: DataChunk) -> ExtractionResult:
+        """带详细日志记录的实体提取方法"""
+        import json
+        import logging
+        
+        chunk_id = chunk.metadata.get('chunk_id')
+        
+        if self.logger:
+            self.logger.log_section(f"处理Chunk {chunk_id}")
+            self.logger.log_section("文本内容", chunk.content)
+        
+        # 创建提取提示
+        prompt = self.entity_extractor.create_extraction_prompt()
+        
+        # 获取系统提示词和用户提示词
+        system_prompt = prompt.messages[0].content if prompt.messages else ""
+        user_prompt = prompt.messages[1].content.format(text=chunk.content) if len(prompt.messages) > 1 else chunk.content
+        
+        if self.logger:
+            self.logger.log_section("系统提示词", system_prompt)
+            self.logger.log_section("用户提示词", user_prompt)
+        
+        # 格式化提示消息
+        formatted_prompt = prompt.format_messages(text=chunk.content)
+        
+        # 调用LLM进行提取
+        if self.logger:
+            self.logger.info("正在调用LLM...")
+        
+        response = self.entity_extractor.llm.invoke(formatted_prompt)
+        raw_content = response.content
+        
+        if self.logger:
+            self.logger.log_section("LLM原始响应", raw_content)
+        
+        # 清理JSON响应内容
+        cleaned_content = self.entity_extractor.clean_json_response(raw_content)
+        
+        if self.logger:
+            self.logger.log_section("清理后的JSON响应", cleaned_content)
+        
+        # 解析JSON数据
+        result_data = json.loads(cleaned_content)
+        
+        if self.logger:
+            self.logger.log_section("解析后的JSON数据", result_data)
+        
+        # 数据清理和验证过程
+        if self.logger:
+            self.logger.log_section("开始数据验证和清理")
+        
+        # 清理实体数据
+        cleaned_entities = []
+        for entity in result_data.get("entities", []):
+            cleaned_entity = self._clean_entity_data(entity)
+            if self._validate_entity_data(cleaned_entity):
+                cleaned_entities.append(cleaned_entity)
+                if self.logger:
+                    self.logger.info(f"✓ 有效实体: {cleaned_entity}")
+            else:
+                if self.logger:
+                    self.logger.warning(f"✗ 无效实体被跳过: {cleaned_entity}")
+        
+        # 清理关系数据
+        cleaned_relationships = []
+        for rel in result_data.get("relationships", []):
+            cleaned_rel = self._clean_relationship_data(rel)
+            if self._validate_relationship_data(cleaned_rel):
+                cleaned_relationships.append(cleaned_rel)
+                if self.logger:
+                    self.logger.info(f"✓ 有效关系: {cleaned_rel}")
+            else:
+                if self.logger:
+                    self.logger.warning(f"✗ 无效关系被跳过: {cleaned_rel}")
+        
+        # 转换为实体对象列表
+        entities = []
+        for entity in cleaned_entities:
+            try:
+                entities.append(ExtractedEntity(
+                    name=entity['name'],
+                    type=entity['type'],
+                    description=entity.get('description', ''),
+                    chunk_id=chunk_id
+                ))
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"创建实体对象失败: {e}, 数据: {entity}")
+        
+        # 转换为关系对象列表
+        relationships = []
+        for rel in cleaned_relationships:
+            try:
+                relationships.append(ExtractedRelationship(
+                    source=rel['source'],
+                    target=rel['target'],
+                    type=rel['type'],
+                    description=rel.get('description', ''),
+                    chunk_id=chunk_id
+                ))
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"创建关系对象失败: {e}, 数据: {rel}")
+        
+        if self.logger:
+            self.logger.log_section("提取结果", {
+                "实体数量": len(entities),
+                "关系数量": len(relationships),
+                "实体详情": [
+                    {"名称": e.name, "类型": e.type, "描述": e.description}
+                    for e in entities
+                ],
+                "关系详情": [
+                    {"源": r.source, "目标": r.target, "类型": r.type, "描述": r.description}
+                    for r in relationships
+                ]
+            })
+        
+        return ExtractionResult(entities=entities, relationships=relationships)
+    
+    def _clean_entity_data(self, entity_data: Dict[str, Any]) -> Dict[str, Any]:
+        """清理实体数据"""
+        if 'name' in entity_data:
+            entity_data['name'] = entity_data['name'].strip('"\'')
+        if 'type' in entity_data:
+            entity_data['type'] = entity_data['type'].strip('"\'')
+        if 'description' in entity_data and entity_data['description']:
+            entity_data['description'] = entity_data['description'].strip('"\'')
+        return entity_data
+    
+    def _clean_relationship_data(self, rel_data: Dict[str, Any]) -> Dict[str, Any]:
+        """清理关系数据"""
+        if 'source' in rel_data:
+            rel_data['source'] = rel_data['source'].strip('"\'')
+        if 'target' in rel_data:
+            rel_data['target'] = rel_data['target'].strip('"\'')
+        if 'type' in rel_data:
+            rel_data['type'] = rel_data['type'].strip('"\'')
+        if 'description' in rel_data and rel_data['description']:
+            rel_data['description'] = rel_data['description'].strip('"\'')
+        return rel_data
+    
+    def _validate_entity_data(self, entity_data: Dict[str, Any]) -> bool:
+        """验证实体数据的必填字段"""
+        if not entity_data.get('name') or not entity_data.get('name').strip():
+            return False
+        
+        if not entity_data.get('type') or not entity_data.get('type').strip():
+            return False
+        
+        name = entity_data['name'].strip()
+        entity_type = entity_data['type'].strip()
+        
+        if not name or name.lower() in ['entity_name', 'actual_entity_name_from_text', 'name']:
+            return False
+        
+        if not entity_type or entity_type.lower() in ['entity_type', 'appropriate_entity_type', 'type']:
+            return False
+        
+        return True
+    
+    def _validate_relationship_data(self, rel_data: Dict[str, Any]) -> bool:
+        """验证关系数据的必填字段"""
+        if not rel_data.get('source') or not rel_data.get('source').strip():
+            return False
+        
+        if not rel_data.get('target') or not rel_data.get('target').strip():
+            return False
+        
+        if not rel_data.get('type') or not rel_data.get('type').strip():
+            return False
+        
+        source = rel_data['source'].strip()
+        target = rel_data['target'].strip()
+        rel_type = rel_data['type'].strip()
+        
+        if not source or source.lower() in ['source', 'actual_source_entity_name']:
+            return False
+        
+        if not target or target.lower() in ['target', 'actual_target_entity_name']:
+            return False
+        
+        if not rel_type or rel_type.lower() in ['type', 'appropriate_relationship_type']:
+            return False
+        
+        if source == target:
+            return False
+        
+        return True
+    
     def _extract_with_retry(self, chunk: DataChunk) -> ExtractionResult:
         import logging
-        # 最多重试max_retries次
+        
+        # 如果有logger，使用带日志的提取方法
+        if hasattr(self, 'logger') and self.logger:
+            return self._extract_with_logging(chunk)
+        
+        # 否则使用原始的提取方法
         for attempt in range(self.max_retries):
             try:
                 # 提取实体

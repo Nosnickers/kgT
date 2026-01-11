@@ -125,43 +125,49 @@ EXTRACTION RULES FOR FICTIONAL CONTENT:
    - Extract relationships that show character dynamics and plot connections
    - Pay attention to dialogue and character interactions
 8. Do not hallucinate entities or relationships not present in the text
-9. Return results in JSON object with the following OUTPUT FORMAT structure (replace the placeholder values with actual extracted entities and relationships):
+9. Return results in JSON object with the following OUTPUT FORMAT structure:
+
+EXAMPLE FORMAT (for reference only):
 {
   "entities": [
     {
-      "name": "actual_entity_name_from_text",
-      "type": "appropriate_entity_type",
-      "description": "actual_description_from_text"
+      "name": "Alex Mercer",
+      "type": "Character",
+      "description": "Agent in Paranormal Military Squad"
+    },
+    {
+      "name": "briefing room",
+      "type": "Location",
+      "description": "Sterile room where team convened"
     }
   ],
   "relationships": [
     {
-      "source": "actual_source_entity_name",
-      "target": "actual_target_entity_name",
-      "type": "appropriate_relationship_type",
-      "description": "actual_relationship_description"
+      "source": "Alex Mercer",
+      "target": "Paranormal Military Squad",
+      "type": "PART_OF",
+      "description": "Alex is part of the team"
     }
   ]
 }
 
-IMPORTANT: DO NOT use the placeholder values shown above. Extract actual entity names, types, and descriptions from the provided text."""
+IMPORTANT: Replace the EXAMPLE values above with your actual extracted entities and relationships from the provided text. The text below contains real content to analyze."""
         
         # 如果启用深度思考模式，添加更详细的思考步骤
         if self.deep_thought_mode:
             deep_thought_prefix = """**DEEP THOUGHT MODE ENABLED**
 
-Please follow these detailed thinking steps to ensure comprehensive and accurate extraction:
+Please follow these focused thinking steps for accurate extraction:
 
-1. **First Pass Analysis:** Read through the entire text carefully and identify the main topics and themes
-2. **Entity Identification:** Systematically scan each sentence and phrase to identify potential entities
-3. **Context Validation:** For each identified entity, verify it has clear context and meaning in the text
-4. **Type Assignment:** Assign the most appropriate entity type from the allowed list, considering the entity's role and context
-5. **Relationship Detection:** Analyze how entities interact with each other to identify relationships
-6. **Direction Verification:** Ensure relationship directions are correct (e.g., Organization → Goal, not the other way around)
-7. **Description Generation:** For each entity and relationship, create concise, accurate descriptions directly from the text
-8. **Final Review:** Double-check all extractions to ensure they meet the rules and requirements
+1. **Content Analysis:** Read through the text and identify characters, locations, organizations mentioned
+2. **Entity Extraction:** For each entity found in the text:
+   - Verify the entity name appears in the text
+   - Determine the most appropriate type from the allowed list
+   - Extract description using ONLY words/phrases from the text
+3. **Relationship Extraction:** Identify how entities interact based on text evidence
+4. **Final Verification:** Ensure all entities and relationships are strictly based on the provided text
 
-Take your time to analyze the text thoroughly and provide the most accurate extraction possible.
+IMPORTANT: Focus ONLY on the text content. Do not analyze the prompt instructions or examples.
 
 """
             system_prompt = deep_thought_prefix + base_prompt
@@ -169,9 +175,8 @@ Take your time to analyze the text thoroughly and provide the most accurate extr
             system_prompt = base_prompt
 
         # 用户提示，提供要提取的文本
-        human_prompt = """Extract entities and relationships from the following text:
+        human_prompt = """Extract entities and relationships from the text below:
 
-Text:
 {text}
 
 Return the extraction result in JSON format."""
