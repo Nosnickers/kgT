@@ -157,17 +157,32 @@ IMPORTANT: Replace the EXAMPLE values above with your actual extracted entities 
         if self.deep_thought_mode:
             deep_thought_prefix = """**DEEP THOUGHT MODE ENABLED**
 
-Please follow these focused thinking steps for accurate extraction:
+CRITICAL - READ AND FOLLOW THESE INSTRUCTIONS CAREFULLY:
 
-1. **Content Analysis:** Read through the text and identify characters, locations, organizations mentioned
-2. **Entity Extraction:** For each entity found in the text:
-   - Verify the entity name appears in the text
-   - Determine the most appropriate type from the allowed list
-   - Extract description using ONLY words/phrases from the text
-3. **Relationship Extraction:** Identify how entities interact based on text evidence
-4. **Final Verification:** Ensure all entities and relationships are strictly based on the provided text
+You are extracting entities and relationships FROM THE TEXT PROVIDED BELOW ONLY.
 
-IMPORTANT: Focus ONLY on the text content. Do not analyze the prompt instructions or examples.
+ABSOLUTELY FORBIDDEN:
+- DO NOT create examples, scenarios, or sample content
+- DO NOT use names like "John Smith", "Special Operations Team", etc.
+- DO NOT invent any characters, locations, or organizations
+- DO NOT add any information not explicitly stated in text
+- DO NOT create your own interpretation or understanding of story
+- The EXAMPLE FORMAT below is ONLY for JSON structure reference - it contains ZERO real data
+
+REQUIRED PROCESS:
+1. Scan THE PROVIDED TEXT word-by-word
+2. Extract ONLY entities that EXACTLY appear in THE PROVIDED TEXT
+3. For each entity found:
+   - Copy EXACT name from text
+   - Choose appropriate type
+   - Copy EXACT description phrases from text
+4. Extract ONLY relationships that are EXPLICITLY stated in THE PROVIDED TEXT
+5. Verify: Every entity name must match EXACTLY what appears in text
+6. Verify: Every relationship must be EXPLICITLY described in text
+
+FINAL CHECK:
+Before outputting, verify that ALL entities and relationships are DIRECTLY from THE PROVIDED TEXT.
+If you created any entity or relationship during your thinking that is not in text, DELETE IT.
 
 """
             system_prompt = deep_thought_prefix + base_prompt
