@@ -1,6 +1,7 @@
 import logging
 import sys
 import os
+import json
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from pathlib import Path
@@ -188,6 +189,30 @@ def get_conversation_history():
             }), 500
     except Exception as e:
         logger.error(f"获取对话历史失败: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/data-source', methods=['GET'])
+def get_data_source():
+    try:
+        data_file = Path('data/Dulce.json')
+        if not data_file.exists():
+            return jsonify({
+                'status': 'error',
+                'message': '数据源文件不存在'
+            }), 404
+        
+        with open(data_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        return jsonify({
+            'status': 'success',
+            'data': data
+        })
+    except Exception as e:
+        logger.error(f"加载数据源失败: {e}")
         return jsonify({
             'status': 'error',
             'message': str(e)

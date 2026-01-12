@@ -196,6 +196,8 @@ class QAEngine:
                     sources.append({
                         'type': 'entity',
                         'name': entity.get('name', ''),
+                        'entity_type': entity.get('type', ''),
+                        'text_description': entity.get('text_description', ''),
                         'similarity': entity.get('similarity', 0)
                     })
             if retrieval_results and retrieval_results.get('relationships'):
@@ -204,6 +206,8 @@ class QAEngine:
                         'type': 'relationship',
                         'source': rel.get('source', ''),
                         'target': rel.get('target', ''),
+                        'rel_type': rel.get('type', ''),
+                        'relationship_text': rel.get('relationship_text', ''),
                         'similarity': rel.get('similarity', 0)
                     })
             
