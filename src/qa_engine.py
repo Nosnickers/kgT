@@ -72,31 +72,51 @@ class QAEngine:
 
 请基于上述知识提供准确、详细的答案。如果知识中没有相关信息，请明确说明。"""
     
-    def _build_conversational_prompt(self, query: str) -> str:
+    def _build_conversational_prompt(self, query: str, retrieval_results: Optional[Dict[str, Any]] = None) -> str:
         """
-        构建对话式提示词（包含历史记录）
+        构建对话式提示词（包含历史记录和检索结果）
         
         Args:
             query: 用户问题
+            retrieval_results: 检索结果
             
         Returns:
             提示词字符串
         """
-        if not self.conversation_history:
-            return f"问题：{query}"
+        prompt_parts = []
         
-        history_parts = []
-        for i, turn in enumerate(self.conversation_history[-5:]):
-            history_parts.append(f"用户：{turn.get('user', '')}")
-            history_parts.append(f"助手：{turn.get('assistant', '')}")
+        if retrieval_results:
+            entities = retrieval_results.get('entities', [])
+            relationships = retrieval_results.get('relationships', [])
+            
+            if entities or relationships:
+                prompt_parts.append("相关知识：")
+                if entities:
+                    for entity in entities[:3]:
+                        prompt_parts.append(
+                            f"- {entity.get('name', '')} ({entity.get('type', '')}): "
+                            f"{entity.get('text_description', '')}"
+                        )
+                if relationships:
+                    for rel in relationships[:3]:
+                        prompt_parts.append(
+                            f"- {rel.get('source', '')} {rel.get('type', '')} {rel.get('target', '')}: "
+                            f"{rel.get('relationship_text', '')}"
+                        )
+                prompt_parts.append("")
         
-        history_text = '\n'.join(history_parts)
-        return f"""对话历史：
-{history_text}
-
-当前问题：{query}
-
-请基于对话历史和当前问题提供准确、连贯的答案。"""
+        if self.conversation_history:
+            prompt_parts.append("对话历史：")
+            for i, turn in enumerate(self.conversation_history[-5:]):
+                prompt_parts.append(f"用户：{turn.get('user', '')}")
+                prompt_parts.append(f"助手：{turn.get('assistant', '')}")
+            prompt_parts.append("")
+        
+        prompt_parts.append(f"当前问题：{query}")
+        prompt_parts.append("")
+        prompt_parts.append("请基于上述知识和对话历史提供准确、连贯的答案。")
+        
+        return '\n'.join(prompt_parts)
     
     def answer(self, query: str, retrieval_mode: str = 'hybrid',
                top_k: int = 5, entity_types: Optional[List[str]] = None,
@@ -162,7 +182,7 @@ class QAEngine:
             }
         
         if use_conversation:
-            prompt = self._build_conversational_prompt(query)
+            prompt = self._build_conversational_prompt(query, retrieval_results)
         else:
             prompt = self._build_context_prompt(query, retrieval_results)
         

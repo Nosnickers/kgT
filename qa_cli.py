@@ -331,6 +331,7 @@ def main():
     interactive_parser.add_argument('--entity-types', type=str, help='过滤的实体类型（逗号分隔）')
     interactive_parser.add_argument('--relationship-types', type=str, help='过滤的关系类型（逗号分隔）')
     interactive_parser.add_argument('--min-similarity', type=float, default=0.0, help='最小相似度阈值（默认：0.0）')
+    interactive_parser.add_argument('--use-embedding-cache', action='store_true', default=True, help='使用嵌入缓存（默认：True）')
     interactive_parser.add_argument('--no-cache', action='store_true', help='禁用嵌入缓存')
     
     query_parser = subparsers.add_parser('query', help='单次问答')
