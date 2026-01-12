@@ -3,13 +3,10 @@
 **问题**：`chromadb.HnswConfig` 在新版本中已不存在，导致初始化失败
 
 **修复步骤**：
-
-1. 修改 [src/vector\_store.py](file:///d:\workspace\pytorch\KG\src\vector_store.py#L21-L31) 中的 PersistentClient 初始化代码
+1. 修改 [src/vector_store.py](file:///d:\workspace\pytorch\KG\src\vector_store.py#L21-L31) 中的 PersistentClient 初始化代码
 2. 移除 `hnsw_config` 参数
 3. 保留基本的 `anonymized_telemetry` 和 `allow_reset` 设置
 4. 测试修复后的代码
 
 **修改内容**：
-
-* 第 21-31 行：简化 ChromaDB 客户端初始化，移除不存在的 `hnsw_config` 配置
-
+- 第 21-31 行：简化 ChromaDB 客户端初始化，移除不存在的 `hnsw_config` 配置

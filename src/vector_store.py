@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from pathlib import Path
+import numpy as np
 
 
 class VectorStore:
@@ -170,14 +171,15 @@ class VectorStore:
         logging.info(f"成功添加 {added_count}/{len(relationships)} 个关系到向量存储")
         return added_count
     
-    def search_entities(self, query_text: str, top_k: int = 5, 
+    def search_entities(self, query_embedding: Optional[np.ndarray] = None, query_text: str = None, top_k: int = 5, 
                      entity_types: Optional[List[str]] = None,
                      min_similarity: float = 0.0) -> List[Dict[str, Any]]:
         """
         搜索相似的实体
         
         Args:
-            query_text: 查询文本
+            query_embedding: 查询向量（优先使用）
+            query_text: 查询文本（如果query_embedding为None时使用）
             top_k: 返回的最相似结果数量
             entity_types: 过滤的实体类型列表
             min_similarity: 最小相似度阈值
@@ -190,39 +192,49 @@ class VectorStore:
             if entity_types:
                 where_clause['type'] = {'$or': [{'type': et} for et in entity_types]}
             
+            query_embeddings = None
+            if query_embedding is not None:
+                if isinstance(query_embedding, np.ndarray):
+                    query_embeddings = [query_embedding.tolist()]
+                elif isinstance(query_embedding, list):
+                    query_embeddings = [query_embedding]
+            
             results = self.entity_collection.query(
-                query_texts=[query_text],
+                query_embeddings=query_embeddings,
+                query_texts=[query_text] if query_text is not None and query_embeddings is None else None,
                 n_results=top_k,
                 where=where_clause if where_clause else None
             )
             
             filtered_results = []
-            for result in results:
-                if result['distances'][0] <= (1 - min_similarity):
-                    filtered_results.append({
-                        'id': result['ids'][0],
-                        'name': result['metadatas'][0]['name'],
-                        'type': result['metadatas'][0]['type'],
-                        'text_description': result['documents'][0],
-                        'similarity': 1 - result['distances'][0],
-                        'chunk_ids': eval(result['metadatas'][0]['chunk_ids'])
-                    })
+            if results['ids'] and len(results['ids'][0]) > 0:
+                for i in range(len(results['ids'][0])):
+                    if results['distances'][0][i] <= (1 - min_similarity):
+                        filtered_results.append({
+                            'id': results['ids'][0][i],
+                            'name': results['metadatas'][0][i]['name'],
+                            'type': results['metadatas'][0][i]['type'],
+                            'text_description': results['documents'][0][i],
+                            'similarity': 1 - results['distances'][0][i],
+                            'chunk_ids': eval(results['metadatas'][0][i]['chunk_ids'])
+                        })
             
-            logging.info(f"实体搜索完成，查询: '{query_text}'，找到 {len(filtered_results)} 个结果")
+            logging.info(f"实体搜索完成，查询: '{query_text or 'vector'}'，找到 {len(filtered_results)} 个结果")
             return filtered_results
             
         except Exception as e:
             logging.error(f"搜索实体失败: {e}")
             return []
     
-    def search_relationships(self, query_text: str, top_k: int = 5,
+    def search_relationships(self, query_embedding: Optional[np.ndarray] = None, query_text: str = None, top_k: int = 5,
                         relationship_types: Optional[List[str]] = None,
                         min_similarity: float = 0.0) -> List[Dict[str, Any]]:
         """
         搜索相似的关系
         
         Args:
-            query_text: 查询文本
+            query_embedding: 查询向量（优先使用）
+            query_text: 查询文本（如果query_embedding为None时使用）
             top_k: 返回的最相似结果数量
             relationship_types: 过滤的关系类型列表
             min_similarity: 最小相似度阈值
@@ -235,33 +247,42 @@ class VectorStore:
             if relationship_types:
                 where_clause['type'] = {'$or': [{'type': rt} for rt in relationship_types]}
             
+            query_embeddings = None
+            if query_embedding is not None:
+                if isinstance(query_embedding, np.ndarray):
+                    query_embeddings = [query_embedding.tolist()]
+                elif isinstance(query_embedding, list):
+                    query_embeddings = [query_embedding]
+            
             results = self.relationship_collection.query(
-                query_texts=[query_text],
+                query_embeddings=query_embeddings,
+                query_texts=[query_text] if query_text is not None and query_embeddings is None else None,
                 n_results=top_k,
                 where=where_clause if where_clause else None
             )
             
             filtered_results = []
-            for result in results:
-                if result['distances'][0] <= (1 - min_similarity):
-                    filtered_results.append({
-                        'id': result['ids'][0],
-                        'source': result['metadatas'][0]['source'],
-                        'target': result['metadatas'][0]['target'],
-                        'type': result['metadatas'][0]['type'],
-                        'relationship_text': result['documents'][0],
-                        'similarity': 1 - result['distances'][0],
-                        'chunk_ids': eval(result['metadatas'][0]['chunk_ids'])
-                    })
+            if results['ids'] and len(results['ids'][0]) > 0:
+                for i in range(len(results['ids'][0])):
+                    if results['distances'][0][i] <= (1 - min_similarity):
+                        filtered_results.append({
+                            'id': results['ids'][0][i],
+                            'source': results['metadatas'][0][i]['source'],
+                            'target': results['metadatas'][0][i]['target'],
+                            'type': results['metadatas'][0][i]['type'],
+                            'relationship_text': results['documents'][0][i],
+                            'similarity': 1 - results['distances'][0][i],
+                            'chunk_ids': eval(results['metadatas'][0][i]['chunk_ids'])
+                        })
             
-            logging.info(f"关系搜索完成，查询: '{query_text}'，找到 {len(filtered_results)} 个结果")
+            logging.info(f"关系搜索完成，查询: '{query_text or 'vector'}'，找到 {len(filtered_results)} 个结果")
             return filtered_results
             
         except Exception as e:
             logging.error(f"搜索关系失败: {e}")
             return []
     
-    def search_hybrid(self, query_text: str, top_k: int = 5,
+    def search_hybrid(self, query_embedding: Optional[np.ndarray] = None, query_text: str = None, top_k: int = 5,
                    entity_types: Optional[List[str]] = None,
                    relationship_types: Optional[List[str]] = None,
                    min_similarity: float = 0.0) -> Dict[str, List[Dict[str, Any]]]:
@@ -269,7 +290,8 @@ class VectorStore:
         混合搜索（同时搜索实体和关系）
         
         Args:
-            query_text: 查询文本
+            query_embedding: 查询向量（优先使用）
+            query_text: 查询文本（如果query_embedding为None时使用）
             top_k: 返回的最相似结果数量
             entity_types: 过滤的实体类型列表
             relationship_types: 过滤的关系类型列表
@@ -279,6 +301,7 @@ class VectorStore:
             包含entities和relationships的字典
         """
         entity_results = self.search_entities(
+            query_embedding=query_embedding,
             query_text=query_text,
             top_k=top_k,
             entity_types=entity_types,
@@ -286,6 +309,7 @@ class VectorStore:
         )
         
         relationship_results = self.search_relationships(
+            query_embedding=query_embedding,
             query_text=query_text,
             top_k=top_k,
             relationship_types=relationship_types,

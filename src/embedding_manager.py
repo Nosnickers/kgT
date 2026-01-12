@@ -95,41 +95,92 @@ class EmbeddingManager:
         
         return embeddings
     
-    def embed_entities(self, entities: List[Dict[str, Any]], text_field: str = 'text_description') -> List[Dict[str, Any]]:
+    def load_cache(self, cache_file: str = 'embedding_cache.npz'):
+        """
+        从文件加载嵌入缓存
+        
+        Args:
+            cache_file: 缓存文件路径
+        """
+        try:
+            if Path(cache_file).exists():
+                cache_data = np.load(cache_file)
+                self.embedding_cache = {k: v for k, v in cache_data.items()}
+                logging.info(f"嵌入缓存已从 {cache_file} 加载，共 {len(self.embedding_cache)} 条")
+        except Exception as e:
+            logging.warning(f"加载嵌入缓存失败: {e}")
+    
+    def embed_entities(self, entities: List[Dict[str, Any]], text_field: str = 'text_description', use_cache: bool = True) -> List[Dict[str, Any]]:
         """
         为实体列表生成嵌入
         
         Args:
             entities: 实体列表
             text_field: 用于嵌入的文本字段名（默认为text_description）
+            use_cache: 是否使用缓存（默认为True）
             
         Returns:
             带嵌入向量的实体列表
         """
         texts = [entity.get(text_field, '') for entity in entities]
-        embeddings = self.embed_texts(texts)
         
-        for entity, embedding in zip(entities, embeddings):
-            entity['embedding'] = embedding.tolist()
+        if use_cache:
+            missing_embeddings = []
+            for i, text in enumerate(texts):
+                if text in self.embedding_cache:
+                    entities[i]['embedding'] = self.embedding_cache[text].tolist()
+                else:
+                    missing_embeddings.append(i)
+            
+            if missing_embeddings:
+                missing_texts = [texts[i] for i in missing_embeddings]
+                logging.info(f"为 {len(missing_texts)} 个缺失的实体生成嵌入...")
+                missing_embeddings_data = [entities[i] for i in missing_embeddings]
+                new_embeddings = self.embed_texts(missing_texts)
+                for i, embedding in zip(missing_embeddings, new_embeddings):
+                    entities[i]['embedding'] = embedding.tolist()
+                    self.embedding_cache[missing_texts[i]] = embedding
+        else:
+            embeddings = self.embed_texts(texts)
+            for entity, embedding in zip(entities, embeddings):
+                entity['embedding'] = embedding.tolist()
         
         return entities
     
-    def embed_relationships(self, relationships: List[Dict[str, Any]], text_field: str = 'relationship_text') -> List[Dict[str, Any]]:
+    def embed_relationships(self, relationships: List[Dict[str, Any]], text_field: str = 'relationship_text', use_cache: bool = True) -> List[Dict[str, Any]]:
         """
         为关系列表生成嵌入
         
         Args:
             relationships: 关系列表
             text_field: 用于嵌入的文本字段名（默认为relationship_text）
+            use_cache: 是否使用缓存（默认为True）
             
         Returns:
             带嵌入向量的关系列表
         """
         texts = [relationship.get(text_field, '') for relationship in relationships]
-        embeddings = self.embed_texts(texts)
         
-        for relationship, embedding in zip(relationships, embeddings):
-            relationship['embedding'] = embedding.tolist()
+        if use_cache:
+            missing_embeddings = []
+            for i, text in enumerate(texts):
+                if text in self.embedding_cache:
+                    relationships[i]['embedding'] = self.embedding_cache[text].tolist()
+                else:
+                    missing_embeddings.append(i)
+            
+            if missing_embeddings:
+                missing_texts = [texts[i] for i in missing_embeddings]
+                logging.info(f"为 {len(missing_texts)} 个缺失的关系生成嵌入...")
+                missing_embeddings_data = [relationships[i] for i in missing_embeddings]
+                new_embeddings = self.embed_texts(missing_texts)
+                for i, embedding in zip(missing_embeddings, new_embeddings):
+                    relationships[i]['embedding'] = embedding.tolist()
+                    self.embedding_cache[missing_texts[i]] = embedding
+        else:
+            embeddings = self.embed_texts(texts)
+            for relationship, embedding in zip(relationships, embeddings):
+                relationship['embedding'] = embedding.tolist()
         
         return relationships
     

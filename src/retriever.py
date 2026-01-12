@@ -37,6 +37,7 @@ class Retriever:
         
         query_embedding = self.embedding_manager.embed_text(query)
         results = self.vector_store.search_entities(
+            query_embedding=query_embedding,
             query_text=query,
             top_k=top_k,
             entity_types=entity_types,
@@ -65,6 +66,7 @@ class Retriever:
         
         query_embedding = self.embedding_manager.embed_text(query)
         results = self.vector_store.search_relationships(
+            query_embedding=query_embedding,
             query_text=query,
             top_k=top_k,
             relationship_types=relationship_types,
@@ -95,6 +97,7 @@ class Retriever:
         
         query_embedding = self.embedding_manager.embed_text(query)
         results = self.vector_store.search_hybrid(
+            query_embedding=query_embedding,
             query_text=query,
             top_k=top_k,
             entity_types=entity_types,

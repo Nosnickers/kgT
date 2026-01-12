@@ -136,9 +136,10 @@ def interactive_mode(args):
     logging.info("启动交互式问答模式...")
     
     try:
+        use_cache = not args.no_cache and not args.use_embedding_cache
         embedding_manager = EmbeddingManager(
             model_name=args.embedding_model,
-            cache_embeddings=not args.no_cache
+            cache_embeddings=use_cache
         )
         
         vector_store = VectorStore(persist_directory=args.vector_db)
@@ -219,9 +220,10 @@ def query_mode(args):
     logging.info(f"执行单次问答：{args.query}")
     
     try:
+        use_cache = not args.no_cache and not args.use_embedding_cache
         embedding_manager = EmbeddingManager(
             model_name=args.embedding_model,
-            cache_embeddings=not args.no_cache
+            cache_embeddings=use_cache
         )
         
         vector_store = VectorStore(persist_directory=args.vector_db)
@@ -343,6 +345,7 @@ def main():
     query_parser.add_argument('--entity-types', type=str, help='过滤的实体类型（逗号分隔）')
     query_parser.add_argument('--relationship-types', type=str, help='过滤的关系类型（逗号分隔）')
     query_parser.add_argument('--min-similarity', type=float, default=0.0, help='最小相似度阈值（默认：0.0）')
+    query_parser.add_argument('--use-embedding-cache', action='store_true', default=True, help='使用嵌入缓存（默认：True）')
     query_parser.add_argument('--no-cache', action='store_true', help='禁用嵌入缓存')
     
     args = parser.parse_args()
