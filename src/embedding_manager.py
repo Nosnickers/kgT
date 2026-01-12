@@ -35,7 +35,10 @@ class EmbeddingManager:
             
             if model_path.exists() or '\\' in self.model_name or '/' in self.model_name:
                 logging.info(f"使用本地模型路径: {self.model_name}")
-                self.model = SentenceTransformer(self.model_name)
+                
+                actual_model_path = self._resolve_huggingface_cache_path(model_path)
+                logging.info(f"实际模型路径: {actual_model_path}")
+                self.model = SentenceTransformer(str(actual_model_path))
             else:
                 logging.info(f"从 Hugging Face Hub 下载模型: {self.model_name}")
                 self.model = SentenceTransformer(self.model_name)
@@ -44,6 +47,46 @@ class EmbeddingManager:
         except Exception as e:
             logging.error(f"加载嵌入模型失败: {e}")
             raise
+    
+    def _resolve_huggingface_cache_path(self, model_path: Path) -> Path:
+        """
+        解析 Hugging Face 缓存路径，找到实际的模型目录
+        
+        Args:
+            model_path: 用户提供的路径
+            
+        Returns:
+            实际的模型目录路径
+        """
+        if not model_path.exists():
+            return model_path
+        
+        if model_path.is_file():
+            return model_path.parent
+        
+        if (model_path / 'config.json').exists():
+            return model_path
+        
+        snapshots_dir = model_path / 'snapshots'
+        if snapshots_dir.exists():
+            snapshot_dirs = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+            if snapshot_dirs:
+                latest_snapshot = max(snapshot_dirs, key=lambda x: x.stat().st_mtime)
+                logging.info(f"找到 Hugging Face 缓存快照: {latest_snapshot}")
+                return latest_snapshot
+        
+        refs_dir = model_path / 'refs'
+        if refs_dir.exists():
+            main_ref = refs_dir / 'main'
+            if main_ref.exists():
+                commit_hash = main_ref.read_text().strip()
+                snapshot_path = snapshots_dir / commit_hash
+                if snapshot_path.exists():
+                    logging.info(f"通过 refs/main 找到快照: {snapshot_path}")
+                    return snapshot_path
+        
+        logging.warning(f"无法解析 Hugging Face 缓存路径，使用原始路径: {model_path}")
+        return model_path
     
     def embed_text(self, text: str) -> np.ndarray:
         """
