@@ -54,16 +54,17 @@ class ExtractionResult(BaseModel):
 
 # 实体提取器类
 class EntityExtractor:
-    # 支持的实体类型列表
+    # 支持的实体类型列表 - 口腔临床专用
     ENTITY_TYPES = [
-        "Organization", "Product", "Material", "Goal", "Metric", 
-        "Initiative", "Location", "Person", "Technology", "Program"
+        "Patient", "VisitEvent", "Tooth", "Symptom", "Diagnosis", 
+        "Treatment", "MedicalMaterial", "Drug", "MedicalStaff"
     ]
     
-    # 支持的关系类型列表
+    # 支持的关系类型列表 - 口腔临床专用
     RELATIONSHIP_TYPES = [
-        "ACHIEVES", "USES", "REDUCES", "CONTAINS", "IMPLEMENTS", 
-        "LOCATED_IN", "PARTNERS_WITH", "PRODUCES", "MEASURES", "TARGETS"
+        "BELONGS_TO", "CHIEF_COMPLAINT", "EXAMINATION_FINDING", "DIAGNOSED_AS", 
+        "PLANNED_AS", "RECEIVED", "TARGETS", "USES", "CAUSES", "RELIEVES", 
+        "LOCATED_AT", "ASSOCIATED_WITH", "ADJACENT_TO", "EXECUTED_BY", "CONTAINS_SUBSTEP"
     ]
 
     # 初始化实体提取器
@@ -82,123 +83,128 @@ class EntityExtractor:
 
     # 创建实体和关系提取的提示模板
     def create_extraction_prompt(self) -> ChatPromptTemplate:
-        # 基础提示模板 - 针对小说文本优化
-        base_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from fictional stories, novels, and narrative texts.
+        # 基础提示模板 - 针对口腔临床病历优化
+        base_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from oral clinical medical records.
 
-Your task is to extract characters, locations, organizations, and their relationships from the given fictional text and return them in a structured JSON format.
+Your task is to extract structured clinical information from dental medical records and return them in a structured JSON format.
 
-ENTITY TYPES (use only these for fictional content):
-- Character: People, agents, protagonists, antagonists (e.g., Alex Mercer, Taylor Cruz, Jordan Hayes)
-- Organization: Groups, teams, agencies, factions (e.g., Paranormal Military Squad, secret organizations)
-- Location: Places, settings, environments (e.g., briefing room, Dulce base, laboratory)
-- Technology: Devices, equipment, scientific tools (e.g., monitors, alien technology, comms system)
-- Concept: Abstract ideas, themes, missions (e.g., Operation: Dulce, anomalies, protocols)
-- Object: Physical items, artifacts, props (e.g., folder, table, screens)
-- Event: Occurrences, incidents, plot points (e.g., briefing, transmission, crash site)
+ENTITY TYPES (use only these for oral clinical content):
+- Patient: The individual receiving dental treatment (e.g., "林某", "王某某", "张某")
+- VisitEvent: A specific medical visit or consultation (e.g., "2023年10月26日就诊", "2023年11月15日就诊")
+- Tooth: Specific tooth using FDI two-digit notation (e.g., "11", "12", "21", "22", "16", "26", "36", "46")
+- Symptom: Patient's subjective complaints and objective clinical findings (e.g., "上前牙颜色偏黄", "自发痛", "冷热刺激痛", "龋洞", "叩痛")
+- Diagnosis: Professional medical diagnosis with ICD-10 codes (e.g., "黄染牙 (K00.8)", "中龋 (K02.1)", "慢性牙髓炎 (K04.01)")
+- Treatment: Medical procedures performed or planned (e.g., "Beyond冷光美白术", "树脂充填术", "根管治疗术", "拔除术", "全瓷冠修复")
+- MedicalMaterial: Materials and supplies used in treatment (e.g., "纳米树脂", "玻璃离子水门汀", "多聚甲醛失活剂", "全瓷冠", "美白凝胶")
+- Drug: Medications used in treatment (e.g., "阿替卡因肾上腺素注射液", "丁香油酚")
+- MedicalStaff: Healthcare providers (e.g., "A陈医生", "A李医生")
 
-RELATIONSHIP TYPES (use only these for fictional content):
-- WORKS_FOR: Character → Organization (a character works for an organization)
-- LOCATED_AT: Character/Organization → Location (someone/something is located at a place)
-- USES: Character → Technology/Object (a character uses technology or objects)
-- INTERACTS_WITH: Character → Character (characters interact with each other)
-- PART_OF: Character → Organization (a character is part of an organization)
-- INVOLVED_IN: Character → Event (a character is involved in an event)
-- RELATED_TO: Any entity → Any entity (general relationship when specific type doesn't fit)
-- LEADS: Character → Organization/Team (a character leads a group)
-- OWNS: Character → Object/Technology (a character owns something)
-- PARTICIPATES_IN: Character → Event (a character participates in an event)
+RELATIONSHIP TYPES (use only these for oral clinical content):
+- BELONGS_TO: Patient → VisitEvent (a visit belongs to a patient)
+- CHIEF_COMPLAINT: VisitEvent → Symptom (main complaint of the visit)
+- EXAMINATION_FINDING: VisitEvent → Symptom (clinical examination findings)
+- DIAGNOSED_AS: VisitEvent → Diagnosis (diagnosis made during the visit)
+- PLANNED_AS: VisitEvent → Treatment (treatment planned for the visit)
+- RECEIVED: Patient → Treatment (patient received a treatment)
+- TARGETS: Treatment → Tooth/Diagnosis (treatment targets a specific tooth or diagnosis)
+- USES: Treatment → MedicalMaterial/Drug (treatment uses materials or drugs)
+- CAUSES: Symptom/Diagnosis → Treatment (clinical decision: problem leads to treatment)
+- RELIEVES: Treatment → Symptom (treatment aims to relieve symptoms)
+- LOCATED_AT: Symptom → Tooth (symptom is located at a specific tooth)
+- ASSOCIATED_WITH: Diagnosis → Tooth (diagnosis is associated with a specific tooth)
+- ADJACENT_TO: Tooth → Tooth (teeth are physically adjacent)
+- EXECUTED_BY: Treatment → MedicalStaff (treatment performed by medical staff)
+- CONTAINS_SUBSTEP: Treatment → Treatment (complex treatment contains sub-steps)
 
-EXTRACTION RULES FOR FICTIONAL CONTENT:
-1. Extract characters by their full names when available (e.g., "Alex Mercer" not just "Alex")
-2. Focus on main characters and important supporting characters
-3. Extract locations that are significant to the plot
-4. Extract organizations and groups that play a role in the story
-5. Extract relationships that show character interactions and plot development
-6. **Description Rules:**
-   - For characters: describe their role, personality traits, or actions in the story
-   - For organizations: describe their purpose or role in the narrative
-   - For locations: describe their significance or atmosphere in the story
-   - **NEVER invent or add information that is not present in the text**
+EXTRACTION RULES FOR ORAL CLINICAL RECORDS:
+1. Extract patients by their names (may be anonymized like "林某", "王某某")
+2. Extract visit events with dates and key information
+3. Extract teeth using FDI two-digit notation (e.g., "16" not "右上第一恒磨牙")
+4. Extract symptoms from both chief complaints and examination findings
+5. **CRITICAL - Extract CHIEF_COMPLAINT relationships:**
+   - ALWAYS extract the main complaint (主诉) as a Symptom entity
+   - ALWAYS create a CHIEF_COMPLAINT relationship: VisitEvent → Symptom
+   - The chief complaint is typically found under "主诉：" section
+   - Example: "主诉：上前牙颜色偏黄" → Symptom entity "上前牙颜色偏黄" + CHIEF_COMPLAINT relationship
+6. Extract diagnoses with names and ICD-10 codes when available
+7. Extract all treatments performed or planned
+8. Extract all medical materials and drugs used
+9. Extract medical staff names
+10. **CRITICAL - Description Rules:**
+   - For patients: include age, gender, and basic info from record
+   - For visit events: include date, department, and key clinical info
+   - For teeth: use FDI notation, include tooth type if mentioned
+   - For symptoms: describe symptom and its characteristics
+   - For diagnoses: include diagnosis name and ICD-10 code
+   - For treatments: describe the procedure and key steps
+   - **NEVER invent or add information not present in the text**
    - Keep descriptions concise and directly based on the text
-7. **Context Rules:**
-   - Focus on entities that are relevant to the story's plot and characters
-   - Extract relationships that show character dynamics and plot connections
-   - Pay attention to dialogue and character interactions
-8. Do not hallucinate entities or relationships not present in the text
-9. Return results in JSON object with the following OUTPUT FORMAT structure:
+11. **CRITICAL - Context Rules:**
+    - Focus on clinically relevant entities and relationships
+    - Extract relationships that show clinical decision-making
+    - Pay attention to tooth-specific information and treatments
+    - **ALWAYS extract CHIEF_COMPLAINT relationship when "主诉" is mentioned**
+12. **CRITICAL - Strict Extraction:**
+    - Extract ONLY entities and relationships that EXPLICITLY appear in THE PROVIDED TEXT
+    - DO NOT create examples, scenarios, or sample content
+    - DO NOT use names or information not in the actual medical record
+    - DO NOT invent any diagnoses, treatments, or clinical findings
+13. Return results in JSON object with the following OUTPUT FORMAT structure:
 
-EXAMPLE FORMAT (for reference only):
+EXAMPLE FORMAT (FOR STRUCTURE REFERENCE ONLY - NOT REAL DATA):
 {
   "entities": [
     {
-      "name": "Alex Mercer",
-      "type": "Character",
-      "description": "Agent in Paranormal Military Squad"
+      "name": "示例患者",
+      "type": "Patient",
+      "description": "32岁女性，外企项目经理"
     },
     {
-      "name": "briefing room",
-      "type": "Location",
-      "description": "Sterile room where team convened"
+      "name": "就诊事件",
+      "type": "VisitEvent",
+      "description": "2023年10月26日就诊"
+    },
+    {
+      "name": "上前牙颜色偏黄",
+      "type": "Symptom",
+      "description": "患者主诉上前牙颜色偏黄，影响美观"
     }
   ],
   "relationships": [
     {
-      "source": "Alex Mercer",
-      "target": "Paranormal Military Squad",
-      "type": "PART_OF",
-      "description": "Alex is part of the team"
+      "source": "示例患者",
+      "target": "就诊事件",
+      "type": "BELONGS_TO",
+      "description": "该就诊属于该患者"
+    },
+    {
+      "source": "就诊事件",
+      "target": "上前牙颜色偏黄",
+      "type": "CHIEF_COMPLAINT",
+      "description": "该就诊的主诉是上前牙颜色偏黄"
     }
   ]
 }
 
-IMPORTANT: Replace the EXAMPLE values above with your actual extracted entities and relationships from the provided text. The text below contains real content to analyze."""
+IMPORTANT REMINDERS:
+- The EXAMPLE FORMAT above is ONLY for JSON structure reference
+- The example contains ZERO real data from the medical record
+- You MUST extract entities and relationships ONLY from THE PROVIDED TEXT below
+- Replace the EXAMPLE values with your actual extracted entities and relationships from the provided text
+- DO NOT use any example names or information in your actual extraction
+- Every entity name must match EXACTLY what appears in the provided text
+- Every relationship must be EXPLICITLY described in the provided text"""
         
-        # 如果启用深度思考模式，添加更详细的思考步骤
-        if self.deep_thought_mode:
-            deep_thought_prefix = """**DEEP THOUGHT MODE ENABLED**
-
-CRITICAL - READ AND FOLLOW THESE INSTRUCTIONS CAREFULLY:
-
-You are extracting entities and relationships FROM THE TEXT PROVIDED BELOW ONLY.
-
-ABSOLUTELY FORBIDDEN:
-- DO NOT create examples, scenarios, or sample content
-- DO NOT use names like "John Smith", "Special Operations Team", etc.
-- DO NOT invent any characters, locations, or organizations
-- DO NOT add any information not explicitly stated in text
-- DO NOT create your own interpretation or understanding of story
-- The EXAMPLE FORMAT below is ONLY for JSON structure reference - it contains ZERO real data
-
-REQUIRED PROCESS:
-1. Scan THE PROVIDED TEXT word-by-word
-2. Extract ONLY entities that EXACTLY appear in THE PROVIDED TEXT
-3. For each entity found:
-   - Copy EXACT name from text
-   - Choose appropriate type
-   - Copy EXACT description phrases from text
-4. Extract ONLY relationships that are EXPLICITLY stated in THE PROVIDED TEXT
-5. Verify: Every entity name must match EXACTLY what appears in text
-6. Verify: Every relationship must be EXPLICITLY described in text
-
-FINAL CHECK:
-Before outputting, verify that ALL entities and relationships are DIRECTLY from THE PROVIDED TEXT.
-If you created any entity or relationship during your thinking that is not in text, DELETE IT.
-
-"""
-            system_prompt = deep_thought_prefix + base_prompt
-        else:
-            system_prompt = base_prompt
-
         # 用户提示，提供要提取的文本
-        human_prompt = """Extract entities and relationships from the text below:
+        human_prompt = """Extract entities and relationships from the oral clinical medical record below:
 
 {text}
 
-Return the extraction result in JSON format."""
+Return the extraction result in JSON format. Remember to extract ONLY from the text above, not from the example."""
 
         # 创建并返回聊天提示模板
         return ChatPromptTemplate.from_messages([
-            SystemMessage(content=system_prompt),  # 系统消息
+            SystemMessage(content=base_prompt),  # 系统消息
             HumanMessage(content=human_prompt)      # 用户消息
         ])
 
@@ -219,7 +225,7 @@ Return the extraction result in JSON format."""
         entity_type = entity_data['type'].strip()
         
         # 检查名称是否为空或占位符
-        if not name or name.lower() in ['entity_name', 'actual_entity_name_from_text', 'name']:
+        if not name or name.lower() in ['entity_name', 'actual_entity_name_from_text', 'name', '示例患者', '示例牙位']:
             logging.error(f"实体名称无效或为占位符: {name}")
             return False
         
@@ -252,12 +258,12 @@ Return the extraction result in JSON format."""
         rel_type = rel_data['type'].strip()
         
         # 检查源实体是否为空或占位符
-        if not source or source.lower() in ['source', 'actual_source_entity_name']:
+        if not source or source.lower() in ['source', 'actual_source_entity_name', '示例患者', '示例患者']:
             logging.error(f"关系源实体无效或为占位符: {source}")
             return False
         
         # 检查目标实体是否为空或占位符
-        if not target or target.lower() in ['target', 'actual_target_entity_name']:
+        if not target or target.lower() in ['target', 'actual_target_entity_name', '就诊事件', '示例就诊事件']:
             logging.error(f"关系目标实体无效或为占位符: {target}")
             return False
         

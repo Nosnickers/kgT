@@ -92,7 +92,7 @@ def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = 
     # 如果启用LLM日志记录，创建ChunkLogger
     logger = None
     if enable_llm_logging:
-        from test_chunk_22_logging import ChunkLogger
+        from apple_chunk_22_logging import ChunkLogger
         logger = ChunkLogger(log_dir="logs")
         logging.info("LLM详细日志记录已启用")
     

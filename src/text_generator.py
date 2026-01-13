@@ -113,7 +113,7 @@ class TextGenerator:
         
         return ' '.join(context_parts)
     
-    def generate_all_texts(self, output_file: str = 'knowledge_graph_texts.json') -> bool:
+    def generate_all_texts(self, output_file: str = 'oral_kg_index.json') -> bool:
         """
         为所有实体和关系生成文本描述并保存到JSON文件
         

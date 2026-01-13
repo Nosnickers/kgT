@@ -134,7 +134,7 @@ python qa_cli.py build-index --config .env --csv-file data/kg_build_20260111_145
 **参数说明：**
 - `--config`: 配置文件路径（默认：.env）
 - `--csv-file`: CSV 文件路径（包含原始 chunk 数据）
-- `--output`: 文本描述输出文件（默认：knowledge_graph_texts.json）
+- `--output`: 文本描述输出文件（默认：oral_kg_index.json）
 - `--embedding-model`: 嵌入模型名称或本地路径（默认：all-MiniLM-L6-v2）
 - `--vector-db`: 向量数据库路径（默认：./chroma_db）
 - `--no-cache`: 禁用嵌入缓存

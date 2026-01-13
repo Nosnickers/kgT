@@ -136,6 +136,9 @@ def interactive_mode(args):
     logging.info("启动交互式问答模式...")
     
     try:
+        from config import Config
+        config = Config.from_env(args.config)
+        
         use_cache = not args.no_cache and not args.use_embedding_cache
         embedding_manager = EmbeddingManager(
             model_name=args.embedding_model,
@@ -220,6 +223,9 @@ def query_mode(args):
     logging.info(f"执行单次问答：{args.query}")
     
     try:
+        from config import Config
+        config = Config.from_env(args.config)
+        
         use_cache = not args.no_cache and not args.use_embedding_cache
         embedding_manager = EmbeddingManager(
             model_name=args.embedding_model,
@@ -315,12 +321,13 @@ def main():
     build_parser = subparsers.add_parser('build-index', help='构建向量索引')
     build_parser.add_argument('--config', type=str, default='.env', help='配置文件路径（默认：.env）')
     build_parser.add_argument('--csv-file', type=str, help='CSV文件路径（包含chunk数据）')
-    build_parser.add_argument('--output', type=str, default='knowledge_graph_texts.json', help='文本描述输出文件（默认：knowledge_graph_texts.json）')
+    build_parser.add_argument('--output', type=str, default='oral_kg_index.json', help='文本描述输出文件（默认：oral_kg_index.json）')
     build_parser.add_argument('--embedding-model', type=str, default='all-MiniLM-L6-v2', help='嵌入模型名称或本地路径（默认：all-MiniLM-L6-v2）')
     build_parser.add_argument('--vector-db', type=str, default='./chroma_db', help='向量数据库路径（默认：./chroma_db）')
     build_parser.add_argument('--no-cache', action='store_true', help='禁用嵌入缓存')
     
     interactive_parser = subparsers.add_parser('interactive', help='交互式问答模式')
+    interactive_parser.add_argument('--config', type=str, default='.env', help='配置文件路径（默认：.env）')
     interactive_parser.add_argument('--embedding-model', type=str, default='all-MiniLM-L6-v2', help='嵌入模型名称或本地路径（默认：all-MiniLM-L6-v2）')
     interactive_parser.add_argument('--vector-db', type=str, default='./chroma_db', help='向量数据库路径（默认：./chroma_db）')
     interactive_parser.add_argument('--llm-base-url', type=str, default='http://localhost:11434', help='LLM基础URL（默认：http://localhost:11434）')
@@ -336,6 +343,7 @@ def main():
     
     query_parser = subparsers.add_parser('query', help='单次问答')
     query_parser.add_argument('query', type=str, help='要查询的问题')
+    query_parser.add_argument('--config', type=str, default='.env', help='配置文件路径（默认：.env）')
     query_parser.add_argument('--embedding-model', type=str, default='all-MiniLM-L6-v2', help='嵌入模型名称或本地路径（默认：all-MiniLM-L6-v2）')
     query_parser.add_argument('--vector-db', type=str, default='./chroma_db', help='向量数据库路径（默认：./chroma_db）')
     query_parser.add_argument('--llm-base-url', type=str, default='http://localhost:11434', help='LLM基础URL（默认：http://localhost:11434）')
