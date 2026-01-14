@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent))
 
+from config import Config
 from src.embedding_manager import EmbeddingManager
 from src.vector_store import VectorStore
 from src.retriever import Retriever
@@ -28,10 +29,27 @@ def initialize_components():
     global embedding_manager, vector_store, retriever, qa_engine
     
     try:
+        logger.info("加载配置文件...")
+        config = Config.from_env()
+        
         logger.info("初始化嵌入管理器...")
+        
+        embedding_config = config.embedding
+        model_name = embedding_config.model_name
+        local_model_path = embedding_config.local_model_path
+        
+        if local_model_path:
+            logger.info(f"尝试使用本地模型路径: {local_model_path}")
+            local_path = Path(local_model_path)
+            if local_path.exists():
+                logger.info(f"本地模型路径存在，使用本地模型")
+                model_name = str(local_path)
+            else:
+                logger.warning(f"本地模型路径不存在: {local_model_path}，将使用 Hugging Face Hub 下载模型: {model_name}")
+        
         embedding_manager = EmbeddingManager(
-            model_name='all-MiniLM-L6-v2',
-            cache_embeddings=True
+            model_name=model_name,
+            cache_embeddings=embedding_config.cache_embeddings
         )
         
         logger.info("初始化向量存储...")
@@ -43,11 +61,11 @@ def initialize_components():
         logger.info("初始化问答引擎...")
         qa_engine = QAEngine(
             retriever=retriever,
-            llm_base_url='http://localhost:11434',
-            llm_model='deepseek-r1:8b',
-            llm_temperature=0.7,
-            llm_num_ctx=4096,
-            deep_thought_mode=True
+            llm_base_url=config.ollama.base_url,
+            llm_model=config.ollama.model,
+            llm_temperature=config.ollama.temperature,
+            llm_num_ctx=config.ollama.num_ctx,
+            deep_thought_mode=config.ollama.deep_thought_mode
         )
         
         logger.info("所有组件初始化完成")

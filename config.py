@@ -24,6 +24,12 @@ class DataConfig(BaseModel):
     chunk_overlap: int = Field(default=200)
 
 
+class EmbeddingConfig(BaseModel):
+    model_name: str = Field(default="all-MiniLM-L6-v2")
+    local_model_path: Optional[str] = Field(default=None)
+    cache_embeddings: bool = Field(default=True)
+
+
 class ProcessingConfig(BaseModel):
     max_retries: int = Field(default=3)
     retry_delay: int = Field(default=2)
@@ -34,6 +40,7 @@ class Config(BaseModel):
     neo4j: Neo4jConfig
     ollama: OllamaConfig
     data: DataConfig
+    embedding: EmbeddingConfig
     processing: ProcessingConfig
 
     @classmethod
@@ -59,6 +66,11 @@ class Config(BaseModel):
                 file_path=data_file_path,
                 chunk_size=int(os.getenv("CHUNK_SIZE", "2000")),
                 chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "200"))
+            ),
+            embedding=EmbeddingConfig(
+                model_name=os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"),
+                local_model_path=os.getenv("LOCAL_EMBEDDING_MODEL_PATH"),
+                cache_embeddings=os.getenv("CACHE_EMBEDDINGS", "true").lower() == "true"
             ),
             processing=ProcessingConfig(
                 max_retries=int(os.getenv("MAX_RETRIES", "3")),
