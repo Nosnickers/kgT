@@ -152,7 +152,9 @@ def interactive_mode(args):
             retriever=retriever,
             llm_base_url=args.llm_base_url,
             llm_model=args.llm_model,
-            llm_temperature=args.llm_temperature
+            llm_temperature=args.llm_temperature,
+            llm_num_ctx=args.llm_num_ctx,
+            deep_thought_mode=args.deep_thought
         )
         
         print("\n" + "="*60)
@@ -239,7 +241,9 @@ def query_mode(args):
             retriever=retriever,
             llm_base_url=args.llm_base_url,
             llm_model=args.llm_model,
-            llm_temperature=args.llm_temperature
+            llm_temperature=args.llm_temperature,
+            llm_num_ctx=args.llm_num_ctx,
+            deep_thought_mode=args.deep_thought
         )
         
         result = qa_engine.answer(
@@ -333,6 +337,8 @@ def main():
     interactive_parser.add_argument('--llm-base-url', type=str, default='http://localhost:11434', help='LLM基础URL（默认：http://localhost:11434）')
     interactive_parser.add_argument('--llm-model', type=str, default='deepseek-r1:8b', help='LLM模型名称（默认：deepseek-r1:8b）')
     interactive_parser.add_argument('--llm-temperature', type=float, default=0.7, help='LLM温度参数（默认：0.7）')
+    interactive_parser.add_argument('--llm-num-ctx', type=int, default=4096, help='LLM上下文窗口大小（默认：4096）')
+    interactive_parser.add_argument('--deep-thought', action='store_true', help='启用深度思考模式（默认：False）')
     interactive_parser.add_argument('--retrieval-mode', type=str, default='hybrid', choices=['entity', 'relationship', 'hybrid', 'contextual'], help='检索模式（默认：hybrid）')
     interactive_parser.add_argument('--top-k', type=int, default=5, help='返回的最相似结果数量（默认：5）')
     interactive_parser.add_argument('--entity-types', type=str, help='过滤的实体类型（逗号分隔）')
@@ -349,6 +355,8 @@ def main():
     query_parser.add_argument('--llm-base-url', type=str, default='http://localhost:11434', help='LLM基础URL（默认：http://localhost:11434）')
     query_parser.add_argument('--llm-model', type=str, default='deepseek-r1:8b', help='LLM模型名称（默认：deepseek-r1:8b）')
     query_parser.add_argument('--llm-temperature', type=float, default=0.7, help='LLM温度参数（默认：0.7）')
+    query_parser.add_argument('--llm-num-ctx', type=int, default=4096, help='LLM上下文窗口大小（默认：4096）')
+    query_parser.add_argument('--deep-thought', action='store_true', help='启用深度思考模式（默认：False）')
     query_parser.add_argument('--retrieval-mode', type=str, default='hybrid', choices=['entity', 'relationship', 'hybrid', 'contextual'], help='检索模式（默认：hybrid）')
     query_parser.add_argument('--top-k', type=int, default=5, help='返回的最相似结果数量（默认：5）')
     query_parser.add_argument('--entity-types', type=str, help='过滤的实体类型（逗号分隔）')

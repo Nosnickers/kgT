@@ -296,6 +296,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--data-file",
+        type=str,
+        default=None,
+        help="Path to data file to process (overrides DATA_FILE in config file). Supports both JSON and Markdown formats. Examples: data/chief_complaint_1.json or data/oralRecords.md"
+    )
+    
+    parser.add_argument(
         "--log-file",
         type=str,
         default=None,
@@ -344,7 +351,7 @@ The detailed log file will be named: chunk_analysis_YYYYMMDD_HHMMSS.log
     print_banner()
     
     try:
-        config = Config.from_env(args.config)
+        config = Config.from_env(args.config, data_file_override=args.data_file)
         config.validate_config()
         print_config(config)
         

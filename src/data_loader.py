@@ -36,9 +36,20 @@ class DataLoader:
         return content
 
     def load_json(self) -> List[Dict[str, Any]]:
-        """加载JSON格式的数据"""
+        """加载JSON格式的数据，支持数组和对象两种格式"""
         with open(self.file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        
+        # 如果数据是字典（对象格式），转换为列表格式
+        if isinstance(data, dict):
+            # 检查是否是病历对象格式（包含中文键名）
+            if any(key in data for key in ['主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱']):
+                # 将病历对象转换为列表格式
+                return [data]
+            # 如果是其他字典格式，也转换为列表
+            return [data]
+        
+        # 如果已经是列表，直接返回
         return data
 
     def clean_text(self, text: str) -> str:
@@ -71,9 +82,44 @@ class DataLoader:
         sections = []
         
         for item in data:
-            # 提取章节信息
+            # 提取章节信息 - 支持中文和英文键名
             item_id = item.get('id', 'unknown')
-            text_content = item.get('text', '')
+            
+            # 检查是否是病历对象格式（包含中文键名）
+            is_medical_record = any(key in item for key in ['主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱'])
+            
+            if is_medical_record:
+                # 对于病历格式，组合所有相关字段
+                text_content = ''
+                for key in ['主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱']:
+                    if key in item:
+                        value = item[key]
+                        # 处理数组类型的字段（如检查、诊断等）
+                        if isinstance(value, list):
+                            for sub_item in value:
+                                if isinstance(sub_item, dict) and '内容' in sub_item:
+                                    text_content += f"{key}：{sub_item['内容']}\n"
+                                elif isinstance(sub_item, str):
+                                    text_content += f"{key}：{sub_item}\n"
+                        elif isinstance(value, str) and value.strip():
+                            text_content += f"{key}：{value}\n"
+                
+                if not text_content:
+                    # 如果都没有，使用 id 作为后备
+                    text_content = f"ID: {item_id}\n"
+            else:
+                # 对于普通格式，支持多种文本字段：text（英文）、主诉（中文）、现病史（中文）等
+                text_content = item.get('text', '') or item.get('主诉', '') or item.get('现病史', '')
+                if not text_content:
+                    # 尝试组合所有可能的字段
+                    text_content = ''
+                    for key in ['text', '主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱']:
+                        if key in item:
+                            text_content += f"{key}：{item[key]}\n"
+                    if not text_content:
+                        # 如果都没有，使用 id 作为后备
+                        text_content = f"ID: {item_id}\n"
+            
             metadata = item.get('metadata', {})
             
             # 从文本中提取标题（如果有markdown标题格式）

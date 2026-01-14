@@ -45,7 +45,9 @@ def initialize_components():
             retriever=retriever,
             llm_base_url='http://localhost:11434',
             llm_model='deepseek-r1:8b',
-            llm_temperature=0.7
+            llm_temperature=0.7,
+            llm_num_ctx=4096,
+            deep_thought_mode=True
         )
         
         logger.info("所有组件初始化完成")

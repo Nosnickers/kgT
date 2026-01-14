@@ -37,8 +37,10 @@ class Config(BaseModel):
     processing: ProcessingConfig
 
     @classmethod
-    def from_env(cls, env_file: Optional[str] = None) -> "Config":
+    def from_env(cls, env_file: Optional[str] = None, data_file_override: Optional[str] = None) -> "Config":
         load_dotenv(env_file)
+        
+        data_file_path = data_file_override if data_file_override else os.getenv("DATA_FILE", "data/Apple_Environmental_Progress_Report_2024.md")
         
         return cls(
             neo4j=Neo4jConfig(
@@ -54,7 +56,7 @@ class Config(BaseModel):
                 deep_thought_mode=os.getenv("OLLAMA_DEEP_THOUGHT_MODE", "false").lower() == "true"
             ),
             data=DataConfig(
-                file_path=os.getenv("DATA_FILE", "data/Apple_Environmental_Progress_Report_2024.md"),
+                file_path=data_file_path,
                 chunk_size=int(os.getenv("CHUNK_SIZE", "2000")),
                 chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "200"))
             ),

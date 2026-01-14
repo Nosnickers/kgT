@@ -18,6 +18,7 @@
 3. **Neo4j 已安装并运行**
    - 使用 Neo4j Desktop 或 Docker
    - 确保服务在 `bolt://localhost:7687` 运行
+   - 浏览器打开 http://localhost:7474/browser/
 
 ### 步骤 0：创建虚拟环境（推荐）
 

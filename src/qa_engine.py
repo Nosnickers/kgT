@@ -12,7 +12,9 @@ class QAEngine:
     def __init__(self, retriever: Retriever, 
                  llm_base_url: str = "http://localhost:11434",
                  llm_model: str = "deepseek-r1:8b",
-                 llm_temperature: float = 0.7):
+                 llm_temperature: float = 0.7,
+                 llm_num_ctx: int = 4096,
+                 deep_thought_mode: bool = False):
         """
         初始化问答引擎
         
@@ -21,12 +23,15 @@ class QAEngine:
             llm_base_url: LLM基础URL
             llm_model: LLM模型名称
             llm_temperature: LLM温度参数
+            llm_num_ctx: LLM上下文窗口大小
+            deep_thought_mode: 是否启用深度思考模式
         """
         self.retriever = retriever
         self.llm = ChatOllama(
             base_url=llm_base_url,
             model=llm_model,
-            temperature=llm_temperature
+            temperature=llm_temperature,
+            num_ctx=llm_num_ctx
         )
         self.conversation_history: List[Dict[str, Any]] = []
     

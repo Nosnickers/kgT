@@ -149,51 +149,34 @@ EXTRACTION RULES FOR ORAL CLINICAL RECORDS:
     - DO NOT create examples, scenarios, or sample content
     - DO NOT use names or information not in the actual medical record
     - DO NOT invent any diagnoses, treatments, or clinical findings
-13. Return results in JSON object with the following OUTPUT FORMAT structure:
-
-EXAMPLE FORMAT (FOR STRUCTURE REFERENCE ONLY - NOT REAL DATA):
+    - If the text does not contain a patient name, DO NOT create a Patient entity
+    - If the text does not contain a visit date, DO NOT create a VisitEvent entity
+    - Only extract what is explicitly stated in the provided text
+13. Return results in JSON format with this exact structure:
 {
   "entities": [
     {
-      "name": "示例患者",
-      "type": "Patient",
-      "description": "32岁女性，外企项目经理"
-    },
-    {
-      "name": "就诊事件",
-      "type": "VisitEvent",
-      "description": "2023年10月26日就诊"
-    },
-    {
-      "name": "上前牙颜色偏黄",
-      "type": "Symptom",
-      "description": "患者主诉上前牙颜色偏黄，影响美观"
+      "name": "string",
+      "type": "string",
+      "description": "string"
     }
   ],
   "relationships": [
     {
-      "source": "示例患者",
-      "target": "就诊事件",
-      "type": "BELONGS_TO",
-      "description": "该就诊属于该患者"
-    },
-    {
-      "source": "就诊事件",
-      "target": "上前牙颜色偏黄",
-      "type": "CHIEF_COMPLAINT",
-      "description": "该就诊的主诉是上前牙颜色偏黄"
+      "source": "string",
+      "target": "string",
+      "type": "string",
+      "description": "string"
     }
   ]
 }
 
-IMPORTANT REMINDERS:
-- The EXAMPLE FORMAT above is ONLY for JSON structure reference
-- The example contains ZERO real data from the medical record
-- You MUST extract entities and relationships ONLY from THE PROVIDED TEXT below
-- Replace the EXAMPLE values with your actual extracted entities and relationships from the provided text
-- DO NOT use any example names or information in your actual extraction
-- Every entity name must match EXACTLY what appears in the provided text
-- Every relationship must be EXPLICITLY described in the provided text"""
+FINAL INSTRUCTIONS:
+- NO EXAMPLES WILL BE PROVIDED
+- You MUST extract ONLY from the text below
+- DO NOT use any names, dates, or information from your training data
+- If the text is short or lacks certain information, extract only what is present
+- Better to extract fewer entities correctly than to invent incorrect ones"""
         
         # 用户提示，提供要提取的文本
         human_prompt = """Extract entities and relationships from the oral clinical medical record below:
