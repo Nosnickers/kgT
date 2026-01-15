@@ -343,6 +343,7 @@ The detailed log file will be named: chunk_analysis_YYYYMMDD_HHMMSS.log
     # 配置日志
     log_file = configure_logging(args.log_file)
     logging.info(f"Logging to file: {log_file}")
+    logging.info(f"Command line arguments: data_file={args.data_file}, build={args.build}, config={args.config}")
     
     # 提取日志文件名前缀，用于csv输出
     import os

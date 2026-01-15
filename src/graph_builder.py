@@ -11,6 +11,7 @@ from src.data_loader import DataLoader, DataChunk
 from src.neo4j_manager import Neo4jManager, Entity, Relationship
 # 导入实体提取器相关模块
 from src.entity_extractor import EntityExtractor, ExtractionResult, ExtractedEntity, ExtractedRelationship
+from langchain_core.messages import SystemMessage, HumanMessage
 
 
 # 知识图谱构建器类
@@ -216,10 +217,32 @@ class GraphBuilder:
         
         # 创建提取提示
         prompt = self.entity_extractor.create_extraction_prompt()
+        # 调试日志：检查提示模板
+        logging.info(f"提示模板类型: {type(prompt)}")
+        if hasattr(prompt, 'input_variables'):
+            logging.info(f"提示模板 input_variables: {prompt.input_variables}")
+        logging.info(f"提示模板消息数量: {len(prompt.messages) if prompt.messages else 0}")
         
         # 获取系统提示词和用户提示词
         system_prompt = prompt.messages[0].content if prompt.messages else ""
-        user_prompt = prompt.messages[1].content.format(text=chunk.content) if len(prompt.messages) > 1 else chunk.content
+        # 处理 HumanMessagePromptTemplate（模板对象）和 HumanMessage（消息对象）
+        if len(prompt.messages) > 1:
+            msg = prompt.messages[1]
+            if hasattr(msg, 'template'):  # HumanMessagePromptTemplate
+                user_prompt = msg.template.format(text=chunk.content)
+                original_template = msg.template
+            elif hasattr(msg, 'content'):  # HumanMessage
+                user_prompt = msg.content.format(text=chunk.content)
+                original_template = msg.content
+            else:
+                user_prompt = chunk.content
+                original_template = str(msg)
+        else:
+            user_prompt = chunk.content
+            original_template = "无消息"
+        # 调试日志：检查用户提示词格式化
+        logging.info(f"原始用户提示词模板: {original_template[:200] if original_template else '无消息'}")
+        logging.info(f"格式化后的用户提示词 (用于日志): {user_prompt[:200] if user_prompt else '空'}")
         
         if self.logger:
             self.logger.log_section("系统提示词", system_prompt)
@@ -227,6 +250,39 @@ class GraphBuilder:
         
         # 格式化提示消息
         formatted_prompt = prompt.format_messages(text=chunk.content)
+        # 调试日志：记录格式化后的提示词
+        logging.info(f"chunk.content 长度: {len(chunk.content)}")
+        logging.info(f"chunk.content 预览: {chunk.content[:100] if chunk.content else '空'}")
+        if formatted_prompt and len(formatted_prompt) > 1:
+            logging.info(f"格式化后的用户提示词内容: {formatted_prompt[1].content[:200] if formatted_prompt[1].content else '空'}")
+            # 检查格式化是否成功
+            if "{text}" in formatted_prompt[1].content or "<text>" in formatted_prompt[1].content:
+                logging.warning("检测到未替换的占位符，使用直接字符串格式化")
+                # 直接格式化用户提示词
+                # 从提示模板中获取用户提示词模板
+                if len(prompt.messages) > 1:
+                    msg = prompt.messages[1]
+                    if hasattr(msg, 'template'):  # HumanMessagePromptTemplate
+                        human_prompt = msg.template
+                    elif hasattr(msg, 'content'):  # HumanMessage
+                        human_prompt = msg.content
+                    else:
+                        human_prompt = "Extract entities and relationships from: {text}"
+                else:
+                    human_prompt = "Extract entities and relationships from: {text}"
+                formatted_human_prompt = human_prompt.format(text=chunk.content)
+                # 重新构建formatted_prompt
+                # 获取系统提示词
+                system_content = ""
+                if prompt.messages and len(prompt.messages) > 0:
+                    system_msg = prompt.messages[0]
+                    if hasattr(system_msg, 'content'):
+                        system_content = system_msg.content
+                formatted_prompt = [
+                    SystemMessage(content=system_content),
+                    HumanMessage(content=formatted_human_prompt)
+                ]
+                logging.info(f"直接格式化后的用户提示词: {formatted_human_prompt[:200]}")
         
         # 调用LLM进行提取
         if self.logger:
@@ -258,13 +314,23 @@ class GraphBuilder:
         cleaned_entities = []
         for entity in result_data.get("entities", []):
             cleaned_entity = self._clean_entity_data(entity)
-            if self._validate_entity_data(cleaned_entity):
-                cleaned_entities.append(cleaned_entity)
+            
+            # 基本字段验证
+            if not self._validate_entity_data(cleaned_entity):
                 if self.logger:
-                    self.logger.info(f"✓ 有效实体: {cleaned_entity}")
-            else:
-                if self.logger:
-                    self.logger.warning(f"✗ 无效实体被跳过: {cleaned_entity}")
+                    self.logger.warning(f"✗ 无效实体被跳过（基本验证失败）: {cleaned_entity}")
+                continue
+            
+            # 文本验证（防止幻觉）
+            if hasattr(self.entity_extractor, '_validate_entity_against_text'):
+                if not self.entity_extractor._validate_entity_against_text(cleaned_entity, chunk.content):
+                    if self.logger:
+                        self.logger.warning(f"✗ 无效实体被跳过（未在文本中找到）: {cleaned_entity}")
+                    continue
+            
+            cleaned_entities.append(cleaned_entity)
+            if self.logger:
+                self.logger.info(f"✓ 有效实体: {cleaned_entity}")
         
         # 清理关系数据
         cleaned_relationships = []

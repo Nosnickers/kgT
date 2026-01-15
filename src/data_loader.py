@@ -64,10 +64,19 @@ class DataLoader:
         
         lines = text.split('\n')
         for line in lines:
+            is_header = False
+            title = line.strip()
+            
             if line.startswith('#'):
+                is_header = True
+                title = re.sub(r'^#+\s*', '', line).strip()
+            elif re.match(r'^病历片断 \d+：', line):
+                is_header = True
+                title = line.strip()
+            
+            if is_header:
                 if current_section["content"].strip():
                     sections.append(current_section)
-                title = re.sub(r'^#+\s*', '', line).strip()
                 current_section = {"title": title, "content": ""}
             else:
                 current_section["content"] += line + '\n'

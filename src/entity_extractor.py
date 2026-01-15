@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 # 导入LangChain的Ollama聊天模型
 from langchain_ollama import ChatOllama
 # 导入LangChain的聊天提示模板
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 # 导入LangChain的JSON输出解析器
 from langchain_core.output_parsers import JsonOutputParser
 # 导入LangChain的消息类型
@@ -23,7 +23,7 @@ class ExtractedEntity(BaseModel):
     # 实体名称
     name: str = Field(description="实体的名称")
     # 实体类型（组织、产品、材料、目标等）
-    type: str = Field(description="实体的类型（Organization, Product, Material, Goal, Metric, Initiative, Location等）")
+    type: str = Field(description="实体的类型")
     # 实体的简要描述（可选）
     description: Optional[str] = Field(default="", description="实体的简要描述")
     # 实体来源的chunk ID（可选）
@@ -37,7 +37,7 @@ class ExtractedRelationship(BaseModel):
     # 目标实体名称
     target: str = Field(description="目标实体的名称")
     # 关系类型（ACHIEVES, USES, REDUCES等）
-    type: str = Field(description="关系的类型（ACHIEVES, USES, REDUCES, CONTAINS, IMPLEMENTS, LOCATED_IN等）")
+    type: str = Field(description="关系的类型")
     # 关系的简要描述（可选）
     description: Optional[str] = Field(default="", description="关系的简要描述")
     # 关系来源的chunk ID（可选）
@@ -56,26 +56,61 @@ class ExtractionResult(BaseModel):
 class EntityExtractor:
     # 支持的实体类型列表 - 口腔临床专用
     ENTITY_TYPES = [
-        "Patient", "VisitEvent", "Tooth", "Symptom", "Diagnosis", 
-        "Treatment", "MedicalMaterial", "Drug", "MedicalStaff"
+        "Patient", # (patient_id, name可不输出，若存在则脱敏)
+        "PatientId", # 患者ID
+        "Demographics", # 患者基本信息（年龄、性别等）
+        "ChiefComplaint", # 主诉
+        "PresentIllness", # 现病史事件/病程
+        "PastHistory", # 既往病史
+        "FamilyHistory", # 家族病史
+        "SocialHistory", # 社会病史（吸烟、饮酒、职业等）
+        "Symptom", # 症状
+        "Sign", # 体征
+        "Diagnosis", # 诊断
+        "Medication", # 药物名，含剂量/频次/途径
+        "Procedure", # 操作/手术
+        "LabTest", # 检验项
+        "LabValue", # 检验数值/单位
+        "Imaging", # 影像检查项
+        "Allergies", # 过敏
+        "Treatment", # 治疗
+        "Vitals", #  vital signs (体温、血压、脉搏、呼吸等)
+        "Duration", # 时长
+        "TemporalExpression", # 时间表达，如“3天前”
     ]
     
     # 支持的关系类型列表 - 口腔临床专用
     RELATIONSHIP_TYPES = [
-        "BELONGS_TO", "CHIEF_COMPLAINT", "EXAMINATION_FINDING", "DIAGNOSED_AS", 
-        "PLANNED_AS", "RECEIVED", "TARGETS", "USES", "CAUSES", "RELIEVES", 
-        "LOCATED_AT", "ASSOCIATED_WITH", "ADJACENT_TO", "EXECUTED_BY", "CONTAINS_SUBSTEP"
+        "HAS_DIAGNOSIS", # 诊断关系 (Patient -> Diagnosis)
+        "DIAGNOSIS_HAS_SYMPTOM", # 诊断包含症状 (Diagnosis -> Symptom)
+        "SYMPTOM_OF", # 症状属于 (Symptom -> Diagnosis)
+        "MEDICATION_TREAT_FOR", # 药物治疗目标 (Medication -> Diagnosis)
+        "MEDICATION_HAS_DOSE", # 药物剂量 (Medication -> Dose)
+        "LABTEST_HAS_VALUE", # 检验结果 (LabTest -> LabValue)
+        "PROCEDURE_PERFORMED_ON", # 手术 performed on (Procedure -> BodyPart/Diagnosis)
+        "ALLERGY_TO", # 过敏 (Patient -> Allergen)
+        "FAMILY_HISTORY_OF", # 家族病史 (Patient -> Diagnosis)
+        "CHIEF_COMPLAINT", # 主诉关系 (VisitEvent -> Symptom)
     ]
 
     # 初始化实体提取器
     def __init__(self, base_url: str, model: str, temperature: float = 0.1, num_ctx: int = 4096, deep_thought_mode: bool = False):
+        # 根据深度思考模式配置LLM参数
+        llm_kwargs = {
+            "base_url": base_url,
+            "model": model,
+            "temperature": temperature,
+            "num_ctx": num_ctx
+        }
+        
+        # 如果深度思考模式关闭，添加停止标记以防止思考过程输出
+        # 暂时注释掉stop tokens，因为会导致空响应
+        # if not deep_thought_mode:
+        #     llm_kwargs["stop"] = ["<think>", "</think>"]
+        
         # 创建Ollama聊天模型实例
-        self.llm = ChatOllama(
-            base_url=base_url,  # Ollama服务器地址
-            model=model,        # 使用的模型名称
-            temperature=temperature,  # 生成文本的随机性参数
-            num_ctx=num_ctx      # 上下文窗口大小
-        )
+        self.llm = ChatOllama(**llm_kwargs)
+        
         # 创建JSON输出解析器
         self.parser = JsonOutputParser(pydantic_object=ExtractionResult)
         # 是否启用深度思考模式
@@ -84,99 +119,99 @@ class EntityExtractor:
     # 创建实体和关系提取的提示模板
     def create_extraction_prompt(self) -> ChatPromptTemplate:
         # 基础提示模板 - 针对口腔临床病历优化
-        base_prompt = """You are an expert knowledge graph builder specializing in extracting entities and relationships from oral clinical medical records.
+        base_prompt = """NO THINKING OUTPUT: DO NOT output any thinking process like <think>...</think>. Respond with JSON only.
+
+NO HALLUCINATION POLICY: You MUST NOT invent, create, or extract any information that is not explicitly stated in the provided text. If something is not mentioned, do not extract it. This is critical for clinical accuracy.
+
+IMPORTANT: The text is a real clinical record. It does NOT contain placeholder names like '张三', '李四', '李明' or example symptoms like '牙痛', '龋齿'. Extract ONLY the actual data present.
+
+You are an expert knowledge graph builder specializing in extracting entities and relationships from oral clinical medical records.
 
 Your task is to extract structured clinical information from dental medical records and return them in a structured JSON format.
 
 ENTITY TYPES (use only these for oral clinical content):
-- Patient: The individual receiving dental treatment (e.g., "林某", "王某某", "张某")
-- VisitEvent: A specific medical visit or consultation (e.g., "2023年10月26日就诊", "2023年11月15日就诊")
-- Tooth: Specific tooth using FDI two-digit notation (e.g., "11", "12", "21", "22", "16", "26", "36", "46")
-- Symptom: Patient's subjective complaints and objective clinical findings (e.g., "上前牙颜色偏黄", "自发痛", "冷热刺激痛", "龋洞", "叩痛")
-- Diagnosis: Professional medical diagnosis with ICD-10 codes (e.g., "黄染牙 (K00.8)", "中龋 (K02.1)", "慢性牙髓炎 (K04.01)")
-- Treatment: Medical procedures performed or planned (e.g., "Beyond冷光美白术", "树脂充填术", "根管治疗术", "拔除术", "全瓷冠修复")
-- MedicalMaterial: Materials and supplies used in treatment (e.g., "纳米树脂", "玻璃离子水门汀", "多聚甲醛失活剂", "全瓷冠", "美白凝胶")
-- Drug: Medications used in treatment (e.g., "阿替卡因肾上腺素注射液", "丁香油酚")
-- MedicalStaff: Healthcare providers (e.g., "A陈医生", "A李医生")
+- Patient: The individual receiving dental treatment (extract name from '姓名：' field)
+- PatientId: Patient identifier (extract from '病历号：' field)
+- Demographics: Patient demographic information (extract from '年龄：', '性别：', '职业：' fields)
+- ChiefComplaint: Main complaint of the patient
+- PresentIllness: Present illness events/course
+- PastHistory: Past medical history
+- FamilyHistory: Family medical history
+- SocialHistory: Social history
+- Symptom: Patient's subjective complaints and objective clinical findings
+- Sign: Clinical signs observed during examination
+- Diagnosis: Professional medical diagnosis
+- Medication: Medications with dosage/frequency/route
+- Procedure: Medical procedures/surgeries
+- LabTest: Laboratory test items
+- LabValue: Laboratory test values/units
+- Imaging: Imaging examination items
+- Allergies: Allergies to medications or substances
+- Treatment: Medical treatments
+- Vitals: Vital signs
+- Duration: Time duration
+- TemporalExpression: Temporal expressions
 
 RELATIONSHIP TYPES (use only these for oral clinical content):
-- BELONGS_TO: Patient → VisitEvent (a visit belongs to a patient)
-- CHIEF_COMPLAINT: VisitEvent → Symptom (main complaint of the visit)
-- EXAMINATION_FINDING: VisitEvent → Symptom (clinical examination findings)
-- DIAGNOSED_AS: VisitEvent → Diagnosis (diagnosis made during the visit)
-- PLANNED_AS: VisitEvent → Treatment (treatment planned for the visit)
-- RECEIVED: Patient → Treatment (patient received a treatment)
-- TARGETS: Treatment → Tooth/Diagnosis (treatment targets a specific tooth or diagnosis)
-- USES: Treatment → MedicalMaterial/Drug (treatment uses materials or drugs)
-- CAUSES: Symptom/Diagnosis → Treatment (clinical decision: problem leads to treatment)
-- RELIEVES: Treatment → Symptom (treatment aims to relieve symptoms)
-- LOCATED_AT: Symptom → Tooth (symptom is located at a specific tooth)
-- ASSOCIATED_WITH: Diagnosis → Tooth (diagnosis is associated with a specific tooth)
-- ADJACENT_TO: Tooth → Tooth (teeth are physically adjacent)
-- EXECUTED_BY: Treatment → MedicalStaff (treatment performed by medical staff)
-- CONTAINS_SUBSTEP: Treatment → Treatment (complex treatment contains sub-steps)
+- HAS_DIAGNOSIS: Patient → Diagnosis (patient has a diagnosis)
+- DIAGNOSIS_HAS_SYMPTOM: Diagnosis → Symptom (diagnosis includes symptoms)
+- SYMPTOM_OF: Symptom → Diagnosis (symptom belongs to a diagnosis)
+- MEDICATION_TREAT_FOR: Medication → Diagnosis (medication treats a diagnosis)
+- MEDICATION_HAS_DOSE: Medication → Dose (medication has dosage information)
+- LABTEST_HAS_VALUE: LabTest → LabValue (lab test has result value)
+- PROCEDURE_PERFORMED_ON: Procedure → BodyPart/Diagnosis (procedure performed on a body part or diagnosis)
+- ALLERGY_TO: Patient → Allergen (patient has allergy to allergen)
+- FAMILY_HISTORY_OF: Patient → Diagnosis (patient has family history of diagnosis)
+- CHIEF_COMPLAINT: Patient → Symptom (main complaint of the patient)
 
-EXTRACTION RULES FOR ORAL CLINICAL RECORDS:
-1. Extract patients by their names (may be anonymized like "林某", "王某某")
-2. Extract visit events with dates and key information
-3. Extract teeth using FDI two-digit notation (e.g., "16" not "右上第一恒磨牙")
-4. Extract symptoms from both chief complaints and examination findings
-5. **CRITICAL - Extract CHIEF_COMPLAINT relationships:**
-   - ALWAYS extract the main complaint (主诉) as a Symptom entity
-   - ALWAYS create a CHIEF_COMPLAINT relationship: VisitEvent → Symptom
-   - The chief complaint is typically found under "主诉：" section
-   - Example: "主诉：上前牙颜色偏黄" → Symptom entity "上前牙颜色偏黄" + CHIEF_COMPLAINT relationship
-6. Extract diagnoses with names and ICD-10 codes when available
-7. Extract all treatments performed or planned
-8. Extract all medical materials and drugs used
-9. Extract medical staff names
-10. **CRITICAL - Description Rules:**
-   - For patients: include age, gender, and basic info from record
-   - For visit events: include date, department, and key clinical info
-   - For teeth: use FDI notation, include tooth type if mentioned
-   - For symptoms: describe symptom and its characteristics
-   - For diagnoses: include diagnosis name and ICD-10 code
-   - For treatments: describe the procedure and key steps
-   - **NEVER invent or add information not present in the text**
-   - Keep descriptions concise and directly based on the text
-11. **CRITICAL - Context Rules:**
-    - Focus on clinically relevant entities and relationships
-    - Extract relationships that show clinical decision-making
-    - Pay attention to tooth-specific information and treatments
-    - **ALWAYS extract CHIEF_COMPLAINT relationship when "主诉" is mentioned**
-12. **CRITICAL - Strict Extraction:**
-    - Extract ONLY entities and relationships that EXPLICITLY appear in THE PROVIDED TEXT
-    - DO NOT create examples, scenarios, or sample content
-    - DO NOT use names or information not in the actual medical record
-    - DO NOT invent any diagnoses, treatments, or clinical findings
-    - If the text does not contain a patient name, DO NOT create a Patient entity
-    - If the text does not contain a visit date, DO NOT create a VisitEvent entity
-    - Only extract what is explicitly stated in the provided text
-13. Return results in JSON format with this exact structure:
+RELATIONSHIP CREATION RULES:
+- Use ONLY the relationship types listed above. Do not use entity types as relationship types.
+- Create relationships only between entities that have been extracted from the text.
+- If no clear relationships exist between extracted entities, leave the relationships array empty.
+- Do not invent relationships. Only create relationships that are explicitly implied by the text structure (e.g., patient has a diagnosis, symptom belongs to diagnosis).
+
+EXTRACTION GUIDELINES:
+1. Extract EXACT values as they appear in the Chinese text. Do not translate or modify.
+2. Look for field labels like '姓名：', '病历号：', '年龄：', '性别：', '职业：', '首次就诊：' and extract the values that follow them.
+3. Extract ALL demographic fields present: age, gender, occupation, first visit status.
+4. For example: 
+   - '姓名：林悦' → extract '林悦' as Patient entity
+   - '病历号：MK20231026018' → extract 'MK20231026018' as PatientId entity
+   - '年龄：32岁' → extract '32岁' as Demographics entity
+   - '性别：女' → extract '女' as Demographics entity
+   - '职业：外企项目经理' → extract '外企项目经理' as Demographics entity
+   - '首次就诊：是' → extract '是' as Demographics entity
+5. Only extract entities that are explicitly stated in the text. Do not invent any names, symptoms, diagnoses, or treatments.
+6. If no entities are found, return empty arrays.
+7. Create relationships only between entities that have been extracted.
+
+SPECIAL INSTRUCTION FOR SHORT TEXTS: If the text contains only demographic information (patient ID, name, age, gender, occupation, first visit), extract only those entities and leave the relationships array empty. Do not invent symptoms, diagnoses, or treatments.
+
+OUTPUT FORMAT:
+Return a JSON object with the following structure:
 {
   "entities": [
     {
-      "name": "string",
-      "type": "string",
-      "description": "string"
+      "name": "exact entity name from text",
+      "type": "entity type from the list above",
+      "description": "brief description based on text (optional)"
     }
   ],
   "relationships": [
     {
-      "source": "string",
-      "target": "string",
-      "type": "string",
-      "description": "string"
+      "source": "source entity name",
+      "target": "target entity name",
+      "type": "relationship type from the list above",
+      "description": "brief description (optional)"
     }
   ]
 }
 
-FINAL INSTRUCTIONS:
-- NO EXAMPLES WILL BE PROVIDED
-- You MUST extract ONLY from the text below
-- DO NOT use any names, dates, or information from your training data
-- If the text is short or lacks certain information, extract only what is present
-- Better to extract fewer entities correctly than to invent incorrect ones"""
+REMEMBER:
+- Extract ONLY from the user-provided text below.
+- Do not use any examples or information from this prompt.
+- If unsure, do not extract.
+- Verify every entity name appears verbatim in the text."""
         
         # 用户提示，提供要提取的文本
         human_prompt = """Extract entities and relationships from the oral clinical medical record below:
@@ -188,7 +223,7 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
         # 创建并返回聊天提示模板
         return ChatPromptTemplate.from_messages([
             SystemMessage(content=base_prompt),  # 系统消息
-            HumanMessage(content=human_prompt)      # 用户消息
+            HumanMessagePromptTemplate.from_template(human_prompt)      # 用户消息
         ])
 
     # 验证实体数据的必填字段
@@ -218,6 +253,59 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
             return False
         
         return True
+
+    # 验证实体是否出现在原始文本中
+    def _validate_entity_against_text(self, entity_data: Dict[str, Any], text: str) -> bool:
+        """验证实体名称是否出现在原始文本中，防止幻觉"""
+        name = entity_data.get('name', '').strip()
+        if not name:
+            return False
+        
+        # 常见幻觉关键词列表
+        hallucination_keywords = [
+            '李明', '张三', '李四', '王五', '赵六', '刘七', '陈八', '杨九', '周十'
+        ]
+        
+        # 检查是否为常见幻觉关键词
+        for keyword in hallucination_keywords:
+            if keyword in name:
+                logging.warning(f"实体名称包含幻觉关键词 '{keyword}': '{name}'")
+                return False
+        
+        # 简单检查：实体名称是否作为子字符串出现在文本中
+        # 注意：文本可能包含标点符号，实体名称可能被部分匹配
+        # 我们进行宽松的检查：移除多余空格后检查
+        normalized_name = ' '.join(name.split())
+        normalized_text = ' '.join(text.split())
+        
+        if normalized_name.lower() in normalized_text.lower():
+            return True
+        
+        # 如果名称包含标点符号（如"牙齿11, 12, 21, 22"），拆分为单个检查
+        # 对于牙齿编号等复合实体，允许部分匹配
+        if ',' in normalized_name or '，' in normalized_name:
+            # 尝试拆分
+            import re
+            parts = re.split(r'[,，]\s*', normalized_name)
+            for part in parts:
+                if part.strip() and part.strip().lower() in normalized_text.lower():
+                    return True
+        
+        # 特殊处理：对于牙齿编号如"11, 12, 21, 22"，可能在文本中以"牙齿11, 12, 21, 22"形式出现
+        # 检查去除"牙齿"前缀后的匹配
+        if normalized_name.replace('牙齿', '').strip().lower() in normalized_text.lower():
+            return True
+        
+        # 检查去除常见前缀后的匹配（如"牙齿"、"牙位"）
+        prefixes = ['牙齿', '牙位', '牙', 'tooth', 'teeth']
+        for prefix in prefixes:
+            if normalized_name.startswith(prefix):
+                stripped = normalized_name[len(prefix):].strip()
+                if stripped and stripped.lower() in normalized_text.lower():
+                    return True
+        
+        logging.warning(f"实体名称未在文本中找到: '{name}' in text (前100字符): {normalized_text[:100]}...")
+        return False
 
     # 验证关系数据的必填字段
     def _validate_relationship_data(self, rel_data: Dict[str, Any]) -> bool:
@@ -277,9 +365,17 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
                 # 调用LLM进行提取
                 response = self.llm.invoke(formatted_prompt)
                 content = response.content
+                # 调试日志：记录原始响应
+                logging.debug(f"LLM原始响应长度: {len(content)}")
+                if content:
+                    logging.debug(f"LLM原始响应预览 (前500字符): {content[:500]}")
+                else:
+                    logging.warning("LLM返回空响应")
                 
                 # 清理JSON响应内容
-                content = self.clean_json_response(content)
+                cleaned_content = self.clean_json_response(content)
+                logging.debug(f"清理后的响应: {cleaned_content}")
+                content = cleaned_content
                 
                 # 解析JSON数据
                 result_data = json.loads(content)
@@ -309,21 +405,38 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
                 cleaned_entities = []
                 for entity in result_data.get("entities", []):
                     cleaned_entity = clean_entity_data(entity)
-                    # 验证实体数据
-                    if self._validate_entity_data(cleaned_entity):
-                        cleaned_entities.append(cleaned_entity)
-                    else:
-                        logging.warning(f"跳过无效实体数据: {cleaned_entity}")
+                    # 验证实体数据基本字段
+                    if not self._validate_entity_data(cleaned_entity):
+                        logging.warning(f"跳过无效实体数据（基本验证失败）: {cleaned_entity}")
+                        continue
+                    # 验证实体是否出现在文本中（防幻觉）
+                    if not self._validate_entity_against_text(cleaned_entity, text):
+                        logging.warning(f"跳过可能幻觉实体（未在文本中找到）: {cleaned_entity}")
+                        continue
+                    cleaned_entities.append(cleaned_entity)
                 
                 # 清理关系数据
                 cleaned_relationships = []
+                # 构建有效实体名称集合，用于关系验证
+                valid_entity_names = {entity['name'] for entity in cleaned_entities}
                 for rel in result_data.get("relationships", []):
                     cleaned_rel = clean_relationship_data(rel)
-                    # 验证关系数据
-                    if self._validate_relationship_data(cleaned_rel):
-                        cleaned_relationships.append(cleaned_rel)
-                    else:
-                        logging.warning(f"跳过无效关系数据: {cleaned_rel}")
+                    # 验证关系数据基本字段
+                    if not self._validate_relationship_data(cleaned_rel):
+                        logging.warning(f"跳过无效关系数据（基本验证失败）: {cleaned_rel}")
+                        continue
+                    # 验证源实体和目标实体是否为有效实体
+                    source_name = cleaned_rel.get('source', '').strip()
+                    target_name = cleaned_rel.get('target', '').strip()
+                    if source_name not in valid_entity_names:
+                        logging.warning(f"跳过关系数据（源实体未在有效实体中找到）: {cleaned_rel}")
+                        continue
+                    if target_name not in valid_entity_names:
+                        logging.warning(f"跳过关系数据（目标实体未在有效实体中找到）: {cleaned_rel}")
+                        continue
+                    # 检查关系类型是否为预定义类型（可选）
+                    # 暂时跳过此检查
+                    cleaned_relationships.append(cleaned_rel)
                 
                 # 检查是否有有效的实体或关系
                 if not cleaned_entities and not cleaned_relationships:
@@ -368,6 +481,7 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
     # 清理LLM返回的JSON响应内容
     def clean_json_response(self, content: str) -> str:
         # 去除首尾空白字符
+        original_length = len(content)
         content = content.strip()
         
         # 处理包含<think>标签的响应
@@ -376,18 +490,22 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
             content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
             # 去除可能的空白字符
             content = content.strip()
+            logging.debug(f"清理后移除<think>标签，内容长度: {len(content)}")
         
         # 如果包含```json标记，则提取标记内的内容
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
+            logging.debug(f"提取```json标记内内容，内容长度: {len(content)}")
         # 如果包含```标记，则提取标记内的内容
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
+            logging.debug(f"提取```标记内内容，内容长度: {len(content)}")
         
         # 寻找JSON数据的开始位置 - 找到第一个'{'字符
         json_start = content.find('{')
         if json_start == -1:
             # 没有找到JSON数据的开始位置，返回空JSON
+            logging.warning(f"未找到JSON起始括号'{{'，原始内容长度: {original_length}，清理后内容: '{content[:100]}...'")
             return "{}"
         
         # 从第一个'{'开始提取内容
@@ -407,6 +525,7 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
         
         if json_end == -1:
             # 没有找到匹配的结束括号，返回空JSON
+            logging.warning(f"未找到匹配的结束括号'}}'，括号计数: {brace_count}，内容: '{content[:100]}...'")
             return "{}"
         
         # 提取有效的JSON部分
@@ -416,9 +535,11 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
         try:
             import json
             json.loads(content)
+            logging.debug(f"成功提取有效JSON，长度: {len(content)}")
             return content
         except json.JSONDecodeError:
             # 如果不是有效的JSON，返回空JSON
+            logging.warning(f"提取的内容不是有效JSON，内容: '{content[:100]}...'")
             return "{}"
 
     # 批量提取多个文本的实体和关系

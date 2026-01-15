@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, validator
@@ -48,6 +49,8 @@ class Config(BaseModel):
         load_dotenv(env_file)
         
         data_file_path = data_file_override if data_file_override else os.getenv("DATA_FILE", "data/Apple_Environmental_Progress_Report_2024.md")
+        logging.debug(f"Config.from_env() called with data_file_override={data_file_override}, DATA_FILE env={os.getenv('DATA_FILE')}")
+        logging.info(f"Data file path determined: {data_file_path}")
         
         return cls(
             neo4j=Neo4jConfig(
