@@ -54,7 +54,7 @@ class ExtractionResult(BaseModel):
 
 # 实体提取器类
 class EntityExtractor:
-    # 支持的实体类型列表 - 口腔临床专用
+    # 支持的实体类型列表 
     ENTITY_TYPES = [
         "Patient", # (patient_id, name可不输出，若存在则脱敏)
         "PatientId", # 患者ID
@@ -68,7 +68,7 @@ class EntityExtractor:
         "Sign", # 体征
         "Diagnosis", # 诊断
         "Medication", # 药物名，含剂量/频次/途径
-        "Procedure", # 操作/手术
+        "Procedure", # 操作/手术/治疗过程
         "LabTest", # 检验项
         "LabValue", # 检验数值/单位
         "Imaging", # 影像检查项
@@ -77,9 +77,10 @@ class EntityExtractor:
         "Vitals", #  vital signs (体温、血压、脉搏、呼吸等)
         "Duration", # 时长
         "TemporalExpression", # 时间表达，如“3天前”
+        "Material", # 材料
     ]
     
-    # 支持的关系类型列表 - 口腔临床专用
+    # 支持的关系类型列表 
     RELATIONSHIP_TYPES = [
         "HAS_DIAGNOSIS", # 诊断关系 (Patient -> Diagnosis)
         "DIAGNOSIS_HAS_SYMPTOM", # 诊断包含症状 (Diagnosis -> Symptom)
@@ -87,10 +88,18 @@ class EntityExtractor:
         "MEDICATION_TREAT_FOR", # 药物治疗目标 (Medication -> Diagnosis)
         "MEDICATION_HAS_DOSE", # 药物剂量 (Medication -> Dose)
         "LABTEST_HAS_VALUE", # 检验结果 (LabTest -> LabValue)
-        "PROCEDURE_PERFORMED_ON", # 手术 performed on (Procedure -> BodyPart/Diagnosis)
+        "PROCEDURE_PERFORMED_ON", # 治疗过程 performed on (Procedure -> BodyPart/Diagnosis)
         "ALLERGY_TO", # 过敏 (Patient -> Allergen)
         "FAMILY_HISTORY_OF", # 家族病史 (Patient -> Diagnosis)
         "CHIEF_COMPLAINT", # 主诉关系 (VisitEvent -> Symptom)
+        "MEDICAL_ADVICE", # 医嘱 (Patient -> Treatment)
+        # 新增口腔科材料相关关系类型
+        "PROCEDURE_USES_MATERIAL", # 治疗使用材料 (Procedure -> Material)
+        "MATERIAL_HAS_COMPONENT", # 材料包含成分 (Material -> Component)
+        "PROCEDURE_PERFORMED_BY", # 治疗由医生执行 (Procedure -> Doctor)
+        "PROCEDURE_AIMS_TO_ACHIEVE", # 治疗旨在达成目标 (Procedure -> Goal/Target)
+        "PATIENT_HAS_OCCUPATION", # 患者有职业 (Patient -> Occupation)
+        "PATIENT_IS_FIRST_VISIT", # 患者首次就诊 (Patient -> FirstVisitStatus)
     ]
 
     # 初始化实体提取器
@@ -123,7 +132,7 @@ class EntityExtractor:
 
 NO HALLUCINATION POLICY: You MUST NOT invent, create, or extract any information that is not explicitly stated in the provided text. If something is not mentioned, do not extract it. This is critical for clinical accuracy.
 
-IMPORTANT: The text is a real clinical record. It does NOT contain placeholder names like '张三', '李四', '李明' or example symptoms like '牙痛', '龋齿'. Extract ONLY the actual data present.
+IMPORTANT: The text is a real clinical record. It does NOT contain placeholder names like '张三', '李四', '李明' or example symptoms like '牙痛', '龋齿'. Extract ONLY the actual data present. The text may contain multiple patients - extract information for EACH patient separately.
 
 You are an expert knowledge graph builder specializing in extracting entities and relationships from oral clinical medical records.
 
@@ -163,6 +172,13 @@ RELATIONSHIP TYPES (use only these for oral clinical content):
 - ALLERGY_TO: Patient → Allergen (patient has allergy to allergen)
 - FAMILY_HISTORY_OF: Patient → Diagnosis (patient has family history of diagnosis)
 - CHIEF_COMPLAINT: Patient → Symptom (main complaint of the patient)
+- MEDICAL_ADVICE: Patient → Treatment (medical advice for the patient)
+- PROCEDURE_USES_MATERIAL: Procedure → Material (treatment procedure uses material)
+- MATERIAL_HAS_COMPONENT: Material → Component (material contains component)
+- PROCEDURE_PERFORMED_BY: Procedure → Doctor (procedure performed by doctor)
+- PROCEDURE_AIMS_TO_ACHIEVE: Procedure → Goal/Target (procedure aims to achieve goal)
+- PATIENT_HAS_OCCUPATION: Patient → Occupation (patient has occupation)
+- PATIENT_IS_FIRST_VISIT: Patient → FirstVisitStatus (patient is first visit)
 
 RELATIONSHIP CREATION RULES:
 - Use ONLY the relationship types listed above. Do not use entity types as relationship types.
@@ -172,15 +188,15 @@ RELATIONSHIP CREATION RULES:
 
 EXTRACTION GUIDELINES:
 1. Extract EXACT values as they appear in the Chinese text. Do not translate or modify.
-2. Look for field labels like '姓名：', '病历号：', '年龄：', '性别：', '职业：', '首次就诊：' and extract the values that follow them.
-3. Extract ALL demographic fields present: age, gender, occupation, first visit status.
-4. For example: 
-   - '姓名：林悦' → extract '林悦' as Patient entity
-   - '病历号：MK20231026018' → extract 'MK20231026018' as PatientId entity
-   - '年龄：32岁' → extract '32岁' as Demographics entity
-   - '性别：女' → extract '女' as Demographics entity
-   - '职业：外企项目经理' → extract '外企项目经理' as Demographics entity
-   - '首次就诊：是' → extract '是' as Demographics entity
+2. Look for field labels like '姓名：', '病历号：', '年龄：', '性别：', '职业：', '首次就诊：', '使用材料：' and extract the values that follow them.
+3. Extract ALL demographic fields present: age, gender, occupation, first visit status. If the text contains multiple patients, extract information for EACH patient.
+4. For example (format only, extract actual values from text): 
+   - '姓名：[患者姓名]' → extract '[患者姓名]' as Patient entity
+   - '病历号：[病历号]' → extract '[病历号]' as PatientId entity
+   - '年龄：[年龄]' → extract '[年龄]' as Demographics entity
+   - '性别：[性别]' → extract '[性别]' as Demographics entity
+   - '职业：[职业]' → extract '[职业]' as Demographics entity
+   - '首次就诊：[首次就诊状态]' → extract '[首次就诊状态]' as Demographics entity
 5. Only extract entities that are explicitly stated in the text. Do not invent any names, symptoms, diagnoses, or treatments.
 6. If no entities are found, return empty arrays.
 7. Create relationships only between entities that have been extracted.

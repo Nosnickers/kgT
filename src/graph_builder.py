@@ -210,10 +210,13 @@ class GraphBuilder:
         import logging
         
         chunk_id = chunk.metadata.get('chunk_id')
+        title = chunk.metadata.get('title', '')
+        combined_text = f"标题：{title}\n内容：{chunk.content}"
         
         if self.logger:
             self.logger.log_section(f"处理Chunk {chunk_id}")
-            self.logger.log_section("文本内容", chunk.content)
+            self.logger.log_section("标题", title)
+            self.logger.log_section("组合文本", combined_text)
         
         # 创建提取提示
         prompt = self.entity_extractor.create_extraction_prompt()
@@ -229,16 +232,16 @@ class GraphBuilder:
         if len(prompt.messages) > 1:
             msg = prompt.messages[1]
             if hasattr(msg, 'template'):  # HumanMessagePromptTemplate
-                user_prompt = msg.template.format(text=chunk.content)
+                user_prompt = msg.template.format(text=combined_text)
                 original_template = msg.template
             elif hasattr(msg, 'content'):  # HumanMessage
-                user_prompt = msg.content.format(text=chunk.content)
+                user_prompt = msg.content.format(text=combined_text)
                 original_template = msg.content
             else:
-                user_prompt = chunk.content
+                user_prompt = combined_text
                 original_template = str(msg)
         else:
-            user_prompt = chunk.content
+            user_prompt = combined_text
             original_template = "无消息"
         # 调试日志：检查用户提示词格式化
         logging.info(f"原始用户提示词模板: {original_template[:200] if original_template else '无消息'}")
@@ -249,10 +252,10 @@ class GraphBuilder:
             self.logger.log_section("用户提示词", user_prompt)
         
         # 格式化提示消息
-        formatted_prompt = prompt.format_messages(text=chunk.content)
+        formatted_prompt = prompt.format_messages(text=combined_text)
         # 调试日志：记录格式化后的提示词
-        logging.info(f"chunk.content 长度: {len(chunk.content)}")
-        logging.info(f"chunk.content 预览: {chunk.content[:100] if chunk.content else '空'}")
+        logging.info(f"原始文本长度: {len(chunk.content)}，组合文本长度: {len(combined_text)}")
+        logging.info(f"组合文本预览: {combined_text[:150] if combined_text else '空'}")
         if formatted_prompt and len(formatted_prompt) > 1:
             logging.info(f"格式化后的用户提示词内容: {formatted_prompt[1].content[:200] if formatted_prompt[1].content else '空'}")
             # 检查格式化是否成功
@@ -270,7 +273,7 @@ class GraphBuilder:
                         human_prompt = "Extract entities and relationships from: {text}"
                 else:
                     human_prompt = "Extract entities and relationships from: {text}"
-                formatted_human_prompt = human_prompt.format(text=chunk.content)
+                formatted_human_prompt = human_prompt.format(text=combined_text)
                 # 重新构建formatted_prompt
                 # 获取系统提示词
                 system_content = ""
@@ -323,7 +326,7 @@ class GraphBuilder:
             
             # 文本验证（防止幻觉）
             if hasattr(self.entity_extractor, '_validate_entity_against_text'):
-                if not self.entity_extractor._validate_entity_against_text(cleaned_entity, chunk.content):
+                if not self.entity_extractor._validate_entity_against_text(cleaned_entity, combined_text):
                     if self.logger:
                         self.logger.warning(f"✗ 无效实体被跳过（未在文本中找到）: {cleaned_entity}")
                     continue
@@ -467,10 +470,13 @@ class GraphBuilder:
             return self._extract_with_logging(chunk)
         
         # 否则使用原始的提取方法
+        title = chunk.metadata.get('title', '')
+        combined_text = f"标题：{title}\n内容：{chunk.content}"
+        
         for attempt in range(self.max_retries):
             try:
                 # 提取实体
-                result = self.entity_extractor.extract(chunk.content)
+                result = self.entity_extractor.extract(combined_text)
                 if result.entities or result.relationships:
                     return result
                 else:
