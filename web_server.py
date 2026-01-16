@@ -13,6 +13,7 @@ from src.embedding_manager import EmbeddingManager
 from src.vector_store import VectorStore
 from src.retriever import Retriever
 from src.qa_engine import QAEngine
+from src.neo4j_manager import Neo4jManager
 
 app = Flask(__name__)
 CORS(app)
@@ -24,9 +25,10 @@ embedding_manager = None
 vector_store = None
 retriever = None
 qa_engine = None
+neo4j_manager = None
 
 def initialize_components():
-    global embedding_manager, vector_store, retriever, qa_engine
+    global embedding_manager, vector_store, retriever, qa_engine, neo4j_manager
     
     try:
         logger.info("加载配置文件...")
@@ -58,6 +60,20 @@ def initialize_components():
         logger.info("初始化检索器...")
         retriever = Retriever(vector_store, embedding_manager)
         
+        logger.info("初始化图数据库管理器...")
+        neo4j_manager = None
+        try:
+            neo4j_manager = Neo4jManager(
+                uri=config.neo4j.uri,
+                username=config.neo4j.username,
+                password=config.neo4j.password
+            )
+            neo4j_manager.connect()
+            logger.info("图数据库连接成功")
+        except Exception as e:
+            logger.warning(f"图数据库连接失败，图检索功能将不可用: {e}")
+            neo4j_manager = None
+        
         logger.info("初始化问答引擎...")
         qa_engine = QAEngine(
             retriever=retriever,
@@ -65,7 +81,8 @@ def initialize_components():
             llm_model=config.ollama.model,
             llm_temperature=config.ollama.temperature,
             llm_num_ctx=config.ollama.num_ctx,
-            deep_thought_mode=config.ollama.deep_thought_mode
+            deep_thought_mode=config.ollama.deep_thought_mode,
+            neo4j_manager=neo4j_manager
         )
         
         logger.info("所有组件初始化完成")
@@ -88,7 +105,8 @@ def health_check():
             'embedding_manager': embedding_manager is not None,
             'vector_store': vector_store is not None,
             'retriever': retriever is not None,
-            'qa_engine': qa_engine is not None
+            'qa_engine': qa_engine is not None,
+            'neo4j_manager': neo4j_manager is not None
         }
     })
 

@@ -148,13 +148,28 @@ def interactive_mode(args):
         vector_store = VectorStore(persist_directory=args.vector_db)
         retriever = Retriever(vector_store, embedding_manager)
         
+        # 初始化图数据库管理器
+        neo4j_manager = None
+        try:
+            neo4j_manager = Neo4jManager(
+                uri=config.neo4j.uri,
+                username=config.neo4j.username,
+                password=config.neo4j.password
+            )
+            neo4j_manager.connect()
+            logging.info("图数据库连接成功")
+        except Exception as e:
+            logging.warning(f"图数据库连接失败，图检索功能将不可用: {e}")
+            neo4j_manager = None
+        
         qa_engine = QAEngine(
             retriever=retriever,
             llm_base_url=args.llm_base_url,
             llm_model=args.llm_model,
             llm_temperature=args.llm_temperature,
             llm_num_ctx=args.llm_num_ctx,
-            deep_thought_mode=args.deep_thought
+            deep_thought_mode=args.deep_thought,
+            neo4j_manager=neo4j_manager
         )
         
         print("\n" + "="*60)
