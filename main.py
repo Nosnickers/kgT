@@ -3,6 +3,7 @@ import sys
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, List
 
 from config import Config
 from src.data_loader import DataLoader
@@ -86,7 +87,9 @@ def print_config(config: Config):
     logging.info("=" * 60 + "\n")
 
 
-def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = None, enable_llm_logging: bool = False):
+def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = None, 
+                enable_llm_logging: bool = False, enable_entity_linking: bool = False,
+                entity_types_to_link: Optional[List[str]] = None):
     logging.info("Initializing components...")
     
     # 如果启用LLM日志记录，创建ChunkLogger
@@ -122,7 +125,9 @@ def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = 
         entity_extractor=entity_extractor,
         max_retries=config.processing.max_retries,
         retry_delay=config.processing.retry_delay,
-        logger=logger  # 传递logger给GraphBuilder
+        logger=logger,  # 传递logger给GraphBuilder
+        enable_entity_linking=enable_entity_linking,
+        entity_types_to_link=entity_types_to_link
     )
     
     logging.info("Connecting to Neo4j...")
@@ -334,6 +339,40 @@ The detailed log file will be named: chunk_analysis_YYYYMMDD_HHMMSS.log
         """
     )
     
+    parser.add_argument(
+        "--enable-entity-linking",
+        action="store_true",
+        help="""
+Enable entity linking to existing entities in the knowledge graph.
+
+When enabled, the system will query the Neo4j database for existing entities 
+before extraction, and provide this context to the LLM. This helps:
+
+- Avoid duplicate creation of existing entities (e.g., patient IDs, patients)
+- Establish relationships between newly extracted entities and existing ones
+- Support incremental knowledge graph building
+
+Entity types to link can be configured via --entity-types-to-link or 
+ENTITY_TYPES_TO_LINK environment variable.
+        """
+    )
+    
+    parser.add_argument(
+        "--entity-types-to-link",
+        type=str,
+        default=None,
+        help="""
+Comma-separated list of entity types to link to existing entities in the graph.
+
+Examples:
+  --entity-types-to-link "Patient,PatientId"
+  --entity-types-to-link "Patient,PatientId,Diagnosis,Symptom"
+
+If not specified, defaults to "Patient,PatientId". Only entity types 
+specified here will be queried from the existing graph.
+        """
+    )
+    
     args = parser.parse_args()
     
     if len(sys.argv) == 1:
@@ -355,6 +394,24 @@ The detailed log file will be named: chunk_analysis_YYYYMMDD_HHMMSS.log
         config = Config.from_env(args.config, data_file_override=args.data_file)
         config.validate_config()
         print_config(config)
+        
+        # 配置合并逻辑：命令行参数 > 环境变量 > 默认值
+        enable_entity_linking = args.enable_entity_linking or config.processing.enable_entity_linking
+        entity_types_to_link = None
+        
+        # 处理实体类型列表
+        if args.entity_types_to_link:
+            # 命令行参数优先级最高
+            entity_types_to_link = [t.strip() for t in args.entity_types_to_link.split(",") if t.strip()]
+            logging.info(f"使用命令行指定的实体类型链接列表: {entity_types_to_link}")
+        elif config.processing.entity_types_to_link:
+            # 其次使用环境变量配置
+            entity_types_to_link = config.processing.entity_types_to_link
+            logging.info(f"使用环境变量配置的实体类型链接列表: {entity_types_to_link}")
+        else:
+            # 默认值
+            entity_types_to_link = ["Patient", "PatientId"]
+            logging.info(f"使用默认实体类型链接列表: {entity_types_to_link}")
         
         graph_builder = None
         
@@ -386,11 +443,16 @@ The detailed log file will be named: chunk_analysis_YYYYMMDD_HHMMSS.log
                 entity_extractor=entity_extractor,
                 max_retries=config.processing.max_retries,
                 retry_delay=config.processing.retry_delay,
-                logger=None  # main函数中不传递logger，避免重复日志
+                logger=None,  # main函数中不传递logger，避免重复日志
+                enable_entity_linking=enable_entity_linking,
+                entity_types_to_link=entity_types_to_link
             )
         
         if args.build:
-            build_graph(config, clear_db=not args.no_clear, csv_output_prefix=csv_output_prefix, enable_llm_logging=args.enable_llm_logging)
+            build_graph(config, clear_db=not args.no_clear, csv_output_prefix=csv_output_prefix, 
+                        enable_llm_logging=args.enable_llm_logging,
+                        enable_entity_linking=enable_entity_linking,
+                        entity_types_to_link=entity_types_to_link)
         
         if args.query:
             if not graph_builder:

@@ -24,7 +24,9 @@ class GraphBuilder:
         entity_extractor: EntityExtractor, # 实体提取器实例
         max_retries: int = 3,             # 最大重试次数（默认3次）
         retry_delay: int = 2,              # 重试延迟时间（默认2秒）
-        logger: Optional[Any] = None         # 可选的日志记录器
+        logger: Optional[Any] = None,        # 可选的日志记录器
+        enable_entity_linking: bool = False, # 是否启用实体链接功能（查询现有实体）
+        entity_types_to_link: List[str] = None  # 要链接的实体类型列表，None表示使用默认值
     ):
         self.data_loader = data_loader
         self.neo4j_manager = neo4j_manager
@@ -32,7 +34,102 @@ class GraphBuilder:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.logger = logger
+        self.enable_entity_linking = enable_entity_linking
+        
+        # 设置要链接的实体类型
+        if entity_types_to_link is None:
+            # 默认链接患者相关实体类型
+            self.entity_types_to_link = ["Patient", "PatientId"]
+        else:
+            self.entity_types_to_link = entity_types_to_link
+        
+        # 缓存已查询的现有实体，减少数据库查询次数
+        self.existing_entities_cache: Dict[str, List[Dict[str, Any]]] = {}
 
+    def _query_existing_entities(self, entity_types: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        查询图数据库中现有的实体
+        
+        Args:
+            entity_types: 要查询的实体类型列表，如果为None则使用self.entity_types_to_link
+            
+        Returns:
+            字典，键为实体类型，值为该类型的实体列表
+        """
+        if not self.enable_entity_linking:
+            return {}
+        
+        import logging
+        
+        if entity_types is None:
+            entity_types = self.entity_types_to_link
+        
+        result = {}
+        for entity_type in entity_types:
+            # 检查缓存
+            if entity_type in self.existing_entities_cache:
+                result[entity_type] = self.existing_entities_cache[entity_type]
+                logging.debug(f"从缓存获取 {entity_type} 类型实体: {len(result[entity_type])} 个")
+                continue
+            
+            try:
+                # 使用Cypher查询指定类型的实体
+                with self.neo4j_manager.driver.session() as session:
+                    query = """
+                    MATCH (e:Entity {type: $entity_type})
+                    RETURN e.name AS name, e.type AS type, e.description AS description, properties(e) AS properties
+                    LIMIT 100
+                    """
+                    records = session.run(query, entity_type=entity_type)
+                    
+                    entity_list = []
+                    for record in records:
+                        entity_list.append({
+                            "name": record["name"],
+                            "type": record["type"],
+                            "description": record["description"] or "",
+                            "properties": dict(record["properties"])
+                        })
+                
+                self.existing_entities_cache[entity_type] = entity_list
+                result[entity_type] = entity_list
+                logging.info(f"查询到 {entity_type} 类型实体: {len(entity_list)} 个")
+            except Exception as e:
+                logging.error(f"查询 {entity_type} 类型实体失败: {e}")
+                result[entity_type] = []
+        
+        return result
+    
+    def _format_existing_entities_for_prompt(self, existing_entities: Dict[str, List[Dict[str, Any]]]) -> str:
+        """
+        将现有实体信息格式化为提示词文本
+        
+        Args:
+            existing_entities: 现有实体字典
+            
+        Returns:
+            格式化的文本，用于添加到提示词中
+        """
+        if not existing_entities:
+            return ""
+        
+        parts = []
+        for entity_type, entities in existing_entities.items():
+            if not entities:
+                continue
+            
+            parts.append(f"现有 {entity_type} 实体（{len(entities)} 个）：")
+            for i, entity in enumerate(entities[:10]):  # 限制最多显示10个
+                desc = entity.get("description", "")
+                if desc:
+                    parts.append(f"  {i+1}. {entity['name']} - {desc}")
+                else:
+                    parts.append(f"  {i+1}. {entity['name']}")
+        
+        if parts:
+            return "\n".join(parts)
+        return ""
+    
     # 构建知识图谱
     def build_graph(
         self,
@@ -218,8 +315,21 @@ class GraphBuilder:
             self.logger.log_section("标题", title)
             self.logger.log_section("组合文本", combined_text)
         
-        # 创建提取提示
-        prompt = self.entity_extractor.create_extraction_prompt()
+        # 如果启用了实体链接，查询现有实体并构建上下文
+        existing_entities_context = ""
+        if self.enable_entity_linking:
+            try:
+                existing_entities = self._query_existing_entities()
+                existing_entities_context = self._format_existing_entities_for_prompt(existing_entities)
+                if existing_entities_context:
+                    logging.info(f"为数据块 {chunk_id} 提供 {sum(len(entities) for entities in existing_entities.values())} 个现有实体上下文")
+            except Exception as e:
+                logging.warning(f"查询现有实体失败，继续无上下文提取: {e}")
+        
+        # 创建提取提示（根据是否提供上下文）
+        prompt = self.entity_extractor.create_extraction_prompt(
+            existing_entities_context=existing_entities_context if existing_entities_context else None
+        )
         # 调试日志：检查提示模板
         logging.info(f"提示模板类型: {type(prompt)}")
         if hasattr(prompt, 'input_variables'):
@@ -473,10 +583,28 @@ class GraphBuilder:
         title = chunk.metadata.get('title', '')
         combined_text = f"标题：{title}\n内容：{chunk.content}"
         
+        # 如果启用了实体链接，查询现有实体并构建上下文
+        existing_entities_context = ""
+        if self.enable_entity_linking:
+            try:
+                existing_entities = self._query_existing_entities()
+                existing_entities_context = self._format_existing_entities_for_prompt(existing_entities)
+                if existing_entities_context:
+                    logging.info(f"为数据块 {chunk.metadata.get('chunk_id')} 提供 {sum(len(entities) for entities in existing_entities.values())} 个现有实体上下文")
+            except Exception as e:
+                logging.warning(f"查询现有实体失败，继续无上下文提取: {e}")
+        
         for attempt in range(self.max_retries):
             try:
-                # 提取实体
-                result = self.entity_extractor.extract(combined_text)
+                # 提取实体（根据是否提供上下文选择方法）
+                if existing_entities_context:
+                    result = self.entity_extractor.extract_with_context(
+                        combined_text, 
+                        existing_entities_context=existing_entities_context
+                    )
+                else:
+                    result = self.entity_extractor.extract(combined_text)
+                    
                 if result.entities or result.relationships:
                     return result
                 else:

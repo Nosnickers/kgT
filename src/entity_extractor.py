@@ -126,7 +126,7 @@ class EntityExtractor:
         self.deep_thought_mode = deep_thought_mode
 
     # 创建实体和关系提取的提示模板
-    def create_extraction_prompt(self) -> ChatPromptTemplate:
+    def create_extraction_prompt(self, existing_entities_context: Optional[str] = None) -> ChatPromptTemplate:
         # 基础提示模板 - 针对口腔临床病历优化
         base_prompt = """NO THINKING OUTPUT: DO NOT output any thinking process like <think>...</think>. Respond with JSON only.
 
@@ -228,6 +228,10 @@ REMEMBER:
 - Do not use any examples or information from this prompt.
 - If unsure, do not extract.
 - Verify every entity name appears verbatim in the text."""
+        
+        # 如果提供了现有实体上下文，将其添加到基础提示中
+        if existing_entities_context:
+            base_prompt += "\n\nEXISTING ENTITIES IN KNOWLEDGE GRAPH:\n" + existing_entities_context + "\n\nIMPORTANT: When extracting entities, if you encounter an entity that matches an existing entity in the knowledge graph (same name and type), you should reference the existing entity rather than creating a duplicate. However, still extract it from the text if it appears."
         
         # 用户提示，提供要提取的文本
         human_prompt = """Extract entities and relationships from the oral clinical medical record below:
@@ -374,6 +378,144 @@ Return the extraction result in JSON format. Remember to extract ONLY from the t
             try:
                 # 创建提取提示
                 prompt = self.create_extraction_prompt()
+                
+                # 格式化提示消息
+                formatted_prompt = prompt.format_messages(text=text)
+                
+                # 调用LLM进行提取
+                response = self.llm.invoke(formatted_prompt)
+                content = response.content
+                # 调试日志：记录原始响应
+                logging.debug(f"LLM原始响应长度: {len(content)}")
+                if content:
+                    logging.debug(f"LLM原始响应预览 (前500字符): {content[:500]}")
+                else:
+                    logging.warning("LLM返回空响应")
+                
+                # 清理JSON响应内容
+                cleaned_content = self.clean_json_response(content)
+                logging.debug(f"清理后的响应: {cleaned_content}")
+                content = cleaned_content
+                
+                # 解析JSON数据
+                result_data = json.loads(content)
+                
+                # 清理实体和关系数据中的多余引号
+                def clean_entity_data(entity_data):
+                    if 'name' in entity_data:
+                        entity_data['name'] = entity_data['name'].strip('"\'')
+                    if 'type' in entity_data:
+                        entity_data['type'] = entity_data['type'].strip('"\'')
+                    if 'description' in entity_data and entity_data['description']:
+                        entity_data['description'] = entity_data['description'].strip('"\'')
+                    return entity_data
+                
+                def clean_relationship_data(rel_data):
+                    if 'source' in rel_data:
+                        rel_data['source'] = rel_data['source'].strip('"\'')
+                    if 'target' in rel_data:
+                        rel_data['target'] = rel_data['target'].strip('"\'')
+                    if 'type' in rel_data:
+                        rel_data['type'] = rel_data['type'].strip('"\'')
+                    if 'description' in rel_data and rel_data['description']:
+                        rel_data['description'] = rel_data['description'].strip('"\'')
+                    return rel_data
+                
+                # 清理实体数据
+                cleaned_entities = []
+                for entity in result_data.get("entities", []):
+                    cleaned_entity = clean_entity_data(entity)
+                    # 验证实体数据基本字段
+                    if not self._validate_entity_data(cleaned_entity):
+                        logging.warning(f"跳过无效实体数据（基本验证失败）: {cleaned_entity}")
+                        continue
+                    # 验证实体是否出现在文本中（防幻觉）
+                    if not self._validate_entity_against_text(cleaned_entity, text):
+                        logging.warning(f"跳过可能幻觉实体（未在文本中找到）: {cleaned_entity}")
+                        continue
+                    cleaned_entities.append(cleaned_entity)
+                
+                # 清理关系数据
+                cleaned_relationships = []
+                # 构建有效实体名称集合，用于关系验证
+                valid_entity_names = {entity['name'] for entity in cleaned_entities}
+                for rel in result_data.get("relationships", []):
+                    cleaned_rel = clean_relationship_data(rel)
+                    # 验证关系数据基本字段
+                    if not self._validate_relationship_data(cleaned_rel):
+                        logging.warning(f"跳过无效关系数据（基本验证失败）: {cleaned_rel}")
+                        continue
+                    # 验证源实体和目标实体是否为有效实体
+                    source_name = cleaned_rel.get('source', '').strip()
+                    target_name = cleaned_rel.get('target', '').strip()
+                    if source_name not in valid_entity_names:
+                        logging.warning(f"跳过关系数据（源实体未在有效实体中找到）: {cleaned_rel}")
+                        continue
+                    if target_name not in valid_entity_names:
+                        logging.warning(f"跳过关系数据（目标实体未在有效实体中找到）: {cleaned_rel}")
+                        continue
+                    # 检查关系类型是否为预定义类型（可选）
+                    # 暂时跳过此检查
+                    cleaned_relationships.append(cleaned_rel)
+                
+                # 检查是否有有效的实体或关系
+                if not cleaned_entities and not cleaned_relationships:
+                    logging.warning(f"第 {attempt + 1} 次尝试未提取到有效数据，进行重试")
+                    continue
+                
+                # 转换为实体对象列表
+                entities = []
+                for entity in cleaned_entities:
+                    try:
+                        entities.append(ExtractedEntity(**entity))
+                    except Exception as e:
+                        logging.error(f"创建实体对象失败: {e}, 数据: {entity}")
+                
+                # 转换为关系对象列表
+                relationships = []
+                for rel in cleaned_relationships:
+                    try:
+                        relationships.append(ExtractedRelationship(**rel))
+                    except Exception as e:
+                        logging.error(f"创建关系对象失败: {e}, 数据: {rel}")
+                
+                # 返回提取结果对象
+                return ExtractionResult(entities=entities, relationships=relationships)
+                
+            # 处理JSON解析错误
+            except json.JSONDecodeError as e:
+                logging.error(f"第 {attempt + 1} 次尝试JSON解析错误: {e}")
+                logging.error(f"响应内容: {content}")
+                if attempt == max_retries - 1:
+                    return ExtractionResult(entities=[], relationships=[])
+            # 处理其他异常
+            except Exception as e:
+                logging.error(f"第 {attempt + 1} 次尝试提取错误: {e}")
+                if attempt == max_retries - 1:
+                    return ExtractionResult(entities=[], relationships=[])
+        
+        # 所有重试都失败
+        logging.error(f"所有 {max_retries} 次尝试均失败")
+        return ExtractionResult(entities=[], relationships=[])
+
+    def extract_with_context(self, text: str, existing_entities_context: Optional[str] = None, max_retries: int = 3) -> ExtractionResult:
+        """
+        从文本中提取实体和关系，考虑知识图谱中现有的实体
+        
+        Args:
+            text: 要提取的文本
+            existing_entities_context: 现有实体上下文信息（格式化文本）
+            max_retries: 最大重试次数
+            
+        Returns:
+            提取结果
+        """
+        import logging
+        
+        for attempt in range(max_retries):
+            try:
+                # 创建包含现有实体上下文的提取提示
+                prompt = self.create_extraction_prompt(existing_entities_context=existing_entities_context)
                 
                 # 格式化提示消息
                 formatted_prompt = prompt.format_messages(text=text)
