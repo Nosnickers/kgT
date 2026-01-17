@@ -84,6 +84,10 @@ def print_config(config: Config):
     logging.info(f"Chunk Size: {config.data.chunk_size}")
     logging.info(f"Chunk Overlap: {config.data.chunk_overlap}")
     logging.info(f"Batch Process Size: {config.processing.batch_process_size}")
+    logging.info(f"Enable Entity Linking: {config.processing.enable_entity_linking}")
+    if config.processing.entity_types_to_link:
+        logging.info(f"Entity Types to Link: {', '.join(config.processing.entity_types_to_link)}")
+    logging.info(f"Enable LLM Logging: {config.processing.enable_llm_logging}")
     logging.info("=" * 60 + "\n")
 
 
@@ -397,6 +401,7 @@ specified here will be queried from the existing graph.
         
         # 配置合并逻辑：命令行参数 > 环境变量 > 默认值
         enable_entity_linking = args.enable_entity_linking or config.processing.enable_entity_linking
+        enable_llm_logging = args.enable_llm_logging or config.processing.enable_llm_logging
         entity_types_to_link = None
         
         # 处理实体类型列表
@@ -450,7 +455,7 @@ specified here will be queried from the existing graph.
         
         if args.build:
             build_graph(config, clear_db=not args.no_clear, csv_output_prefix=csv_output_prefix, 
-                        enable_llm_logging=args.enable_llm_logging,
+                        enable_llm_logging=enable_llm_logging,
                         enable_entity_linking=enable_entity_linking,
                         entity_types_to_link=entity_types_to_link)
         

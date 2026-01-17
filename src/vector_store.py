@@ -38,7 +38,7 @@ class VectorStore:
                 name="entities",
                 metadata={
                     "description": "实体向量集合",
-                    "entity_types": "Character, Organization, Location, Technology, Concept, Object, Event"
+                    "entity_types": "Patient, PatientId, Demographics, ChiefComplaint, PresentIllness, PastHistory, FamilyHistory, SocialHistory, Symptom, Sign, Diagnosis, Medication, Procedure, LabTest, LabValue, Imaging, Allergies, Treatment, Vitals, Duration, TemporalExpression, Material"
                 }
             )
             
@@ -46,7 +46,7 @@ class VectorStore:
                 name="relationships",
                 metadata={
                     "description": "关系向量集合",
-                    "relationship_types": "WORKS_FOR, LOCATED_AT, USES, INTERACTS_WITH, PART_OF, INVOLVED_IN, RELATED_TO, LEADS, OWNS, PARTICIPATES_IN"
+                    "relationship_types": "HAS_DIAGNOSIS, DIAGNOSIS_HAS_SYMPTOM, SYMPTOM_OF, MEDICATION_TREAT_FOR, MEDICATION_HAS_DOSE, LABTEST_HAS_VALUE, PROCEDURE_PERFORMED_ON, ALLERGY_TO, FAMILY_HISTORY_OF, CHIEF_COMPLAINT, MEDICAL_ADVICE, PROCEDURE_USES_MATERIAL, MATERIAL_HAS_COMPONENT, PROCEDURE_PERFORMED_BY, PROCEDURE_AIMS_TO_ACHIEVE, PATIENT_HAS_OCCUPATION, PATIENT_IS_FIRST_VISIT"
                 }
             )
             

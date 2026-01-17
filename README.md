@@ -153,6 +153,96 @@ MAX_RETRIES=3
 RETRY_DELAY=2
 ```
 
+## 高级配置
+
+### 实体链接配置
+
+实体链接功能允许系统在提取新实体时，先查询图数据库中现有的实体，避免重复创建并建立正确的关系。
+
+**配置方式**（优先级：命令行参数 > 环境变量 > 默认值）：
+
+1. **环境变量配置**（`.env`文件中添加）：
+   ```env
+   # 实体链接配置
+   ENABLE_ENTITY_LINKING=true
+   ENTITY_TYPES_TO_LINK=Patient,PatientId,Diagnosis
+   
+   # LLM日志记录配置
+   ENABLE_LLM_LOGGING=false
+   ```
+
+2. **命令行参数配置**：
+   ```bash
+   # 启用实体链接
+   python main.py --build --enable-entity-linking --entity-types-to-link "Patient,PatientId"
+   
+   # 启用LLM详细日志记录
+   python main.py --build --enable-llm-logging
+   
+   # 同时启用两个功能
+   python main.py --build --enable-entity-linking --enable-llm-logging
+   ```
+
+### 实体链接使用场景
+
+#### 场景1：增量构建患者病历
+**场景描述**：在已有患者基本信息的基础上，增量添加新的诊断、症状等信息。
+
+**操作步骤**：
+1. 首次构建：导入患者基本信息（不清空数据库）
+   ```bash
+   python main.py --build --config .env --no-clear
+   ```
+
+2. 后续增量构建：启用实体链接，添加新信息
+   ```bash
+   python main.py --build --config .env --no-clear --enable-entity-linking
+   ```
+
+**效果**：新提取的诊断"黄染牙"会自动关联到现有患者"林悦"，而不是创建新患者。
+
+#### 场景2：多类型实体链接
+**场景描述**：需要链接多种类型的实体（患者、诊断、症状等）。
+
+**操作步骤**：
+```bash
+python main.py --build --config .env --no-clear \
+    --enable-entity-linking \
+    --entity-types-to-link "Patient,Diagnosis,Symptom"
+```
+
+**效果**：系统会查询图数据库中现有的患者、诊断和症状实体，新提取的实体会自动与现有实体建立关系。
+
+#### 场景3：仅链接患者ID
+**场景描述**：只链接患者ID，其他实体正常创建，最小化数据库查询。
+
+**操作步骤**：
+```bash
+python main.py --build --config .env --no-clear \
+    --enable-entity-linking \
+    --entity-types-to-link "PatientId"
+```
+
+**效果**：仅查询患者ID，其他实体（诊断、症状等）正常创建，适合性能敏感场景。
+
+### LLM详细日志记录
+
+LLM详细日志记录功能会创建独立的日志文件，记录实体提取的完整过程，包括：
+- 系统提示词和用户提示词
+- LLM原始响应（含深度思考过程）
+- 清理后的JSON响应
+- 解析后的实体和关系数据
+
+**启用方式**：
+```bash
+# 命令行启用
+python main.py --build --enable-llm-logging
+
+# 环境变量启用（.env文件中设置ENABLE_LLM_LOGGING=true）
+```
+
+**日志文件位置**：`logs/chunk_analysis_YYYYMMDD_HHMMSS.log`
+
 ## 使用方法
 
 ### 构建知识图谱

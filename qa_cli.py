@@ -108,6 +108,10 @@ def build_index(args):
         logging.info("开始初始化向量存储...")
         vector_store = VectorStore(persist_directory=args.vector_db)
         
+        if args.clear_db:
+            logging.info("清除现有的向量数据库...")
+            vector_store.clear_all()
+        
         logging.info("开始添加实体到向量存储...")
         added_entities = vector_store.add_entities(entities_with_embeddings)
         
@@ -329,6 +333,7 @@ def main():
     build_parser.add_argument('--embedding-model', type=str, default='all-MiniLM-L6-v2', help='嵌入模型名称或本地路径（默认：all-MiniLM-L6-v2）')
     build_parser.add_argument('--vector-db', type=str, default='./chroma_db', help='向量数据库路径（默认：./chroma_db）')
     build_parser.add_argument('--no-cache', action='store_true', help='禁用嵌入缓存')
+    build_parser.add_argument('--clear-db', action='store_true', help='清除现有的向量数据库')
     
     interactive_parser = subparsers.add_parser('interactive', help='交互式问答模式')
     interactive_parser.add_argument('--config', type=str, default='.env', help='配置文件路径（默认：.env）')

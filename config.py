@@ -37,6 +37,7 @@ class ProcessingConfig(BaseModel):
     batch_process_size: int = Field(default=10)  # 每处理多少个chunk后写入数据库
     enable_entity_linking: bool = Field(default=False)  # 是否启用实体链接功能
     entity_types_to_link: Optional[List[str]] = Field(default=None)  # 要链接的实体类型列表
+    enable_llm_logging: bool = Field(default=False)  # 是否启用LLM详细日志记录
 
 
 class Config(BaseModel):
@@ -82,7 +83,8 @@ class Config(BaseModel):
                 retry_delay=int(os.getenv("RETRY_DELAY", "2")),
                 batch_process_size=int(os.getenv("BATCH_PROCESS_SIZE", "10")),
                 enable_entity_linking=os.getenv("ENABLE_ENTITY_LINKING", "false").lower() == "true",
-                entity_types_to_link=[t.strip() for t in os.getenv("ENTITY_TYPES_TO_LINK", "").split(",") if t.strip()] if os.getenv("ENTITY_TYPES_TO_LINK", "").strip() else None
+                entity_types_to_link=[t.strip() for t in os.getenv("ENTITY_TYPES_TO_LINK", "").split(",") if t.strip()] if os.getenv("ENTITY_TYPES_TO_LINK", "").strip() else None,
+                enable_llm_logging=os.getenv("ENABLE_LLM_LOGGING", "false").lower() == "true"
             )
         )
 
