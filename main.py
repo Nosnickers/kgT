@@ -10,6 +10,7 @@ from src.data_loader import DataLoader
 from src.neo4j_manager import Neo4jManager
 from src.entity_extractor import EntityExtractor
 from src.graph_builder import GraphBuilder
+from src.llm_client import create_llm_client
 
 
 def print_banner():
@@ -115,12 +116,38 @@ def build_graph(config: Config, clear_db: bool = True, csv_output_prefix: str = 
         password=config.neo4j.password
     )
     
+    # 创建统一的LLM客户端
+    from src.llm_client import LLMConfig, LLMClient
+    if config.enable_online_llm and config.online_llm:
+        # 在线LLM配置
+        llm_config = LLMConfig(
+            enable_online=True,
+            api_key=config.online_llm.api_key,
+            base_url=config.online_llm.base_url,
+            model=config.online_llm.model,
+            temperature=config.online_llm.temperature,
+            max_tokens=config.online_llm.max_tokens,
+            timeout=config.online_llm.timeout
+        )
+    else:
+        # Ollama配置
+        llm_config = LLMConfig(
+            enable_online=False,
+            base_url=config.ollama.base_url,
+            model=config.ollama.model,
+            temperature=config.ollama.temperature,
+            num_ctx=config.ollama.num_ctx,
+            deep_thought_mode=config.ollama.deep_thought_mode
+        )
+    llm_client = LLMClient(llm_config)
+    
     entity_extractor = EntityExtractor(
-        base_url=config.ollama.base_url,
+        base_url=config.ollama.base_url,  # 向后兼容，但会被llm_client覆盖
         model=config.ollama.model,
         temperature=config.ollama.temperature,
         num_ctx=config.ollama.num_ctx,
-        deep_thought_mode=config.ollama.deep_thought_mode
+        deep_thought_mode=config.ollama.deep_thought_mode,
+        llm_client=llm_client
     )
     
     graph_builder = GraphBuilder(

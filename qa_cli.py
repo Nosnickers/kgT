@@ -11,6 +11,7 @@ from src.embedding_manager import EmbeddingManager
 from src.vector_store import VectorStore
 from src.retriever import Retriever
 from src.qa_engine import QAEngine
+from src.llm_client import create_llm_client, LLMConfig, LLMClient
 
 
 def configure_logging(log_file: str = None):
@@ -152,13 +153,39 @@ def interactive_mode(args):
         vector_store = VectorStore(persist_directory=args.vector_db)
         retriever = Retriever(vector_store, embedding_manager)
         
+        # 创建统一的LLM客户端
+        from src.llm_client import LLMConfig, LLMClient
+        if args.enable_online_llm:
+            # 在线LLM配置
+            llm_config = LLMConfig(
+                enable_online=True,
+                api_key=args.online_llm_api_key,
+                base_url=args.online_llm_base_url,
+                model=args.online_llm_model,
+                temperature=args.online_llm_temperature,
+                max_tokens=args.online_llm_max_tokens,
+                timeout=args.online_llm_timeout
+            )
+        else:
+            # Ollama配置
+            llm_config = LLMConfig(
+                enable_online=False,
+                base_url=args.llm_base_url,
+                model=args.llm_model,
+                temperature=args.llm_temperature,
+                num_ctx=args.llm_num_ctx,
+                deep_thought_mode=args.deep_thought
+            )
+        llm_client = LLMClient(llm_config)
+        
         qa_engine = QAEngine(
             retriever=retriever,
-            llm_base_url=args.llm_base_url,
+            llm_base_url=args.llm_base_url,  # 向后兼容，但会被llm_client覆盖
             llm_model=args.llm_model,
             llm_temperature=args.llm_temperature,
             llm_num_ctx=args.llm_num_ctx,
-            deep_thought_mode=args.deep_thought
+            deep_thought_mode=args.deep_thought,
+            llm_client=llm_client
         )
         
         print("\n" + "="*60)
@@ -241,13 +268,39 @@ def query_mode(args):
         vector_store = VectorStore(persist_directory=args.vector_db)
         retriever = Retriever(vector_store, embedding_manager)
         
+        # 创建统一的LLM客户端
+        from src.llm_client import LLMConfig, LLMClient
+        if args.enable_online_llm:
+            # 在线LLM配置
+            llm_config = LLMConfig(
+                enable_online=True,
+                api_key=args.online_llm_api_key,
+                base_url=args.online_llm_base_url,
+                model=args.online_llm_model,
+                temperature=args.online_llm_temperature,
+                max_tokens=args.online_llm_max_tokens,
+                timeout=args.online_llm_timeout
+            )
+        else:
+            # Ollama配置
+            llm_config = LLMConfig(
+                enable_online=False,
+                base_url=args.llm_base_url,
+                model=args.llm_model,
+                temperature=args.llm_temperature,
+                num_ctx=args.llm_num_ctx,
+                deep_thought_mode=args.deep_thought
+            )
+        llm_client = LLMClient(llm_config)
+        
         qa_engine = QAEngine(
             retriever=retriever,
-            llm_base_url=args.llm_base_url,
+            llm_base_url=args.llm_base_url,  # 向后兼容，但会被llm_client覆盖
             llm_model=args.llm_model,
             llm_temperature=args.llm_temperature,
             llm_num_ctx=args.llm_num_ctx,
-            deep_thought_mode=args.deep_thought
+            deep_thought_mode=args.deep_thought,
+            llm_client=llm_client
         )
         
         result = qa_engine.answer(
@@ -344,6 +397,13 @@ def main():
     interactive_parser.add_argument('--llm-temperature', type=float, default=0.7, help='LLM温度参数（默认：0.7）')
     interactive_parser.add_argument('--llm-num-ctx', type=int, default=4096, help='LLM上下文窗口大小（默认：4096）')
     interactive_parser.add_argument('--deep-thought', action='store_true', help='启用深度思考模式（默认：False）')
+    interactive_parser.add_argument('--enable-online-llm', action='store_true', help='启用在线LLM（默认：False）')
+    interactive_parser.add_argument('--online-llm-api-key', type=str, help='在线LLM API密钥')
+    interactive_parser.add_argument('--online-llm-base-url', type=str, help='在线LLM基础URL')
+    interactive_parser.add_argument('--online-llm-model', type=str, help='在线LLM模型名称')
+    interactive_parser.add_argument('--online-llm-temperature', type=float, help='在线LLM温度参数')
+    interactive_parser.add_argument('--online-llm-max-tokens', type=int, help='在线LLM最大token数')
+    interactive_parser.add_argument('--online-llm-timeout', type=int, help='在线LLM超时时间（秒）')
     interactive_parser.add_argument('--retrieval-mode', type=str, default='hybrid', choices=['entity', 'relationship', 'hybrid', 'contextual'], help='检索模式（默认：hybrid）')
     interactive_parser.add_argument('--top-k', type=int, default=5, help='返回的最相似结果数量（默认：5）')
     interactive_parser.add_argument('--entity-types', type=str, help='过滤的实体类型（逗号分隔）')
@@ -362,6 +422,13 @@ def main():
     query_parser.add_argument('--llm-temperature', type=float, default=0.7, help='LLM温度参数（默认：0.7）')
     query_parser.add_argument('--llm-num-ctx', type=int, default=4096, help='LLM上下文窗口大小（默认：4096）')
     query_parser.add_argument('--deep-thought', action='store_true', help='启用深度思考模式（默认：False）')
+    query_parser.add_argument('--enable-online-llm', action='store_true', help='启用在线LLM（默认：False）')
+    query_parser.add_argument('--online-llm-api-key', type=str, help='在线LLM API密钥')
+    query_parser.add_argument('--online-llm-base-url', type=str, help='在线LLM基础URL')
+    query_parser.add_argument('--online-llm-model', type=str, help='在线LLM模型名称')
+    query_parser.add_argument('--online-llm-temperature', type=float, help='在线LLM温度参数')
+    query_parser.add_argument('--online-llm-max-tokens', type=int, help='在线LLM最大token数')
+    query_parser.add_argument('--online-llm-timeout', type=int, help='在线LLM超时时间（秒）')
     query_parser.add_argument('--retrieval-mode', type=str, default='hybrid', choices=['entity', 'relationship', 'hybrid', 'contextual'], help='检索模式（默认：hybrid）')
     query_parser.add_argument('--top-k', type=int, default=5, help='返回的最相似结果数量（默认：5）')
     query_parser.add_argument('--entity-types', type=str, help='过滤的实体类型（逗号分隔）')

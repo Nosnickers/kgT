@@ -8,6 +8,7 @@ import logging
 from typing import List, Dict, Any, Optional
 # 导入LangChain的Ollama聊天模型
 from langchain_ollama import ChatOllama
+from .llm_client import LLMClient, create_llm_client
 # 导入LangChain的聊天提示模板
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 # 导入LangChain的JSON输出解析器
@@ -103,22 +104,24 @@ class EntityExtractor:
     ]
 
     # 初始化实体提取器
-    def __init__(self, base_url: str, model: str, temperature: float = 0.1, num_ctx: int = 4096, deep_thought_mode: bool = False):
-        # 根据深度思考模式配置LLM参数
-        llm_kwargs = {
-            "base_url": base_url,
-            "model": model,
-            "temperature": temperature,
-            "num_ctx": num_ctx
-        }
-        
-        # 如果深度思考模式关闭，添加停止标记以防止思考过程输出
-        # 暂时注释掉stop tokens，因为会导致空响应
-        # if not deep_thought_mode:
-        #     llm_kwargs["stop"] = ["<think>", "</think>"]
-        
-        # 创建Ollama聊天模型实例
-        self.llm = ChatOllama(**llm_kwargs)
+    def __init__(self, base_url: str, model: str, temperature: float = 0.1, num_ctx: int = 4096, deep_thought_mode: bool = False, llm_client: Optional[LLMClient] = None):
+        # 如果提供了 LLMClient，使用它
+        if llm_client is not None:
+            self.llm_client = llm_client
+            self.llm = llm_client.get_llm_instance()
+        else:
+            # 否则，使用旧参数创建 LLMClient（Ollama 配置）
+            from .llm_client import LLMConfig
+            llm_config = LLMConfig(
+                enable_online=False,
+                base_url=base_url,
+                model=model,
+                temperature=temperature,
+                num_ctx=num_ctx,
+                deep_thought_mode=deep_thought_mode
+            )
+            self.llm_client = LLMClient(llm_config)
+            self.llm = self.llm_client.get_llm_instance()
         
         # 创建JSON输出解析器
         self.parser = JsonOutputParser(pydantic_object=ExtractionResult)

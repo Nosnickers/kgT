@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.chat_models import ChatOllama
+from .llm_client import LLMClient, create_llm_client
 from src.retriever import Retriever
 
 
@@ -14,7 +15,8 @@ class QAEngine:
                  llm_model: str = "deepseek-r1:8b",
                  llm_temperature: float = 0.7,
                  llm_num_ctx: int = 4096,
-                 deep_thought_mode: bool = False):
+                 deep_thought_mode: bool = False,
+                 llm_client: Optional[LLMClient] = None):
         """
         初始化问答引擎
         
@@ -25,14 +27,28 @@ class QAEngine:
             llm_temperature: LLM温度参数
             llm_num_ctx: LLM上下文窗口大小
             deep_thought_mode: 是否启用深度思考模式
+            llm_client: 可选的统一LLM客户端实例
         """
         self.retriever = retriever
-        self.llm = ChatOllama(
-            base_url=llm_base_url,
-            model=llm_model,
-            temperature=llm_temperature,
-            num_ctx=llm_num_ctx
-        )
+        
+        # 如果提供了 LLMClient，使用它
+        if llm_client is not None:
+            self.llm_client = llm_client
+            self.llm = llm_client.get_llm_instance()
+        else:
+            # 否则，使用旧参数创建 LLMClient（Ollama 配置）
+            from .llm_client import LLMConfig
+            llm_config = LLMConfig(
+                enable_online=False,
+                base_url=llm_base_url,
+                model=llm_model,
+                temperature=llm_temperature,
+                num_ctx=llm_num_ctx,
+                deep_thought_mode=deep_thought_mode
+            )
+            self.llm_client = LLMClient(llm_config)
+            self.llm = self.llm_client.get_llm_instance()
+        
         self.conversation_history: List[Dict[str, Any]] = []
     
     def _build_context_prompt(self, query: str, retrieval_results: Dict[str, Any]) -> str:

@@ -131,7 +131,7 @@ copy .env.example .env  # Windows
 cp .env.example .env   # Linux/Mac
 ```
 
-2. 编辑 `.env` 文件，设置你的配置：
+2. 从`.env.example`复制自己的 `.env` 文件，设置你的配置：
 
 ```env
 # Neo4j Configuration
@@ -189,7 +189,7 @@ RETRY_DELAY=2
 **场景描述**：在已有患者基本信息的基础上，增量添加新的诊断、症状等信息。
 
 **操作步骤**：
-1. 首次构建：导入患者基本信息（不清空数据库）
+1. 首次构建：导入患者基本信息（是否--no-clear清空数据库可选）
    ```bash
    python main.py --build --config .env --no-clear
    ```

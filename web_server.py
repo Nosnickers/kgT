@@ -13,6 +13,7 @@ from src.embedding_manager import EmbeddingManager
 from src.vector_store import VectorStore
 from src.retriever import Retriever
 from src.qa_engine import QAEngine
+from src.llm_client import create_llm_client, LLMConfig, LLMClient
 
 app = Flask(__name__)
 CORS(app)
@@ -59,13 +60,38 @@ def initialize_components():
         retriever = Retriever(vector_store, embedding_manager)
         
         logger.info("初始化问答引擎...")
+        # 创建统一的LLM客户端
+        if config.enable_online_llm and config.online_llm:
+            # 在线LLM配置
+            llm_config = LLMConfig(
+                enable_online=True,
+                api_key=config.online_llm.api_key,
+                base_url=config.online_llm.base_url,
+                model=config.online_llm.model,
+                temperature=config.online_llm.temperature,
+                max_tokens=config.online_llm.max_tokens,
+                timeout=config.online_llm.timeout
+            )
+        else:
+            # Ollama配置
+            llm_config = LLMConfig(
+                enable_online=False,
+                base_url=config.ollama.base_url,
+                model=config.ollama.model,
+                temperature=config.ollama.temperature,
+                num_ctx=config.ollama.num_ctx,
+                deep_thought_mode=config.ollama.deep_thought_mode
+            )
+        llm_client = LLMClient(llm_config)
+        
         qa_engine = QAEngine(
             retriever=retriever,
-            llm_base_url=config.ollama.base_url,
+            llm_base_url=config.ollama.base_url,  # 向后兼容，但会被llm_client覆盖
             llm_model=config.ollama.model,
             llm_temperature=config.ollama.temperature,
             llm_num_ctx=config.ollama.num_ctx,
-            deep_thought_mode=config.ollama.deep_thought_mode
+            deep_thought_mode=config.ollama.deep_thought_mode,
+            llm_client=llm_client
         )
         
         logger.info("所有组件初始化完成")

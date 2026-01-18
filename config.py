@@ -19,6 +19,16 @@ class OllamaConfig(BaseModel):
     deep_thought_mode: bool = Field(default=False)  # 是否启用深度思考模式
 
 
+class OnlineLLMConfig(BaseModel):
+    """在线LLM配置（OpenAI兼容API）"""
+    api_key: Optional[str] = Field(default=None)
+    base_url: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    model: str = Field(default="qwen3-coder-plus")
+    temperature: float = Field(default=0.1)
+    max_tokens: int = Field(default=4096)
+    timeout: int = Field(default=30)
+
+
 class DataConfig(BaseModel):
     file_path: str = Field(default="data/Dulce.json")
     chunk_size: int = Field(default=2000)
@@ -43,6 +53,8 @@ class ProcessingConfig(BaseModel):
 class Config(BaseModel):
     neo4j: Neo4jConfig
     ollama: OllamaConfig
+    enable_online_llm: bool = Field(default=False)
+    online_llm: Optional[OnlineLLMConfig] = Field(default=None)
     data: DataConfig
     embedding: EmbeddingConfig
     processing: ProcessingConfig
@@ -68,6 +80,15 @@ class Config(BaseModel):
                 num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "4096")),
                 deep_thought_mode=os.getenv("OLLAMA_DEEP_THOUGHT_MODE", "false").lower() == "true"
             ),
+            enable_online_llm=os.getenv("ENABLE_ONLINE_LLM", "false").lower() == "true",
+            online_llm=OnlineLLMConfig(
+                api_key=os.getenv("ONLINE_LLM_API_KEY"),
+                base_url=os.getenv("ONLINE_LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                model=os.getenv("ONLINE_LLM_MODEL", "qwen3-coder-plus"),
+                temperature=float(os.getenv("ONLINE_LLM_TEMPERATURE", "0.1")),
+                max_tokens=int(os.getenv("ONLINE_LLM_MAX_TOKENS", "4096")),
+                timeout=int(os.getenv("ONLINE_LLM_TIMEOUT", "30"))
+            ) if os.getenv("ENABLE_ONLINE_LLM", "false").lower() == "true" else None,
             data=DataConfig(
                 file_path=data_file_path,
                 chunk_size=int(os.getenv("CHUNK_SIZE", "2000")),
