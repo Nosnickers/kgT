@@ -89,8 +89,19 @@ def build_index(args):
         entities = data.get('entities', [])
         relationships = data.get('relationships', [])
         
+        embedding_config = config.embedding
+        model_name = args.embedding_model
+        if embedding_config.local_model_path:
+            from pathlib import Path
+            local_path = Path(embedding_config.local_model_path)
+            if local_path.exists():
+                logging.info(f"使用本地嵌入模型路径: {embedding_config.local_model_path}")
+                model_name = str(local_path)
+            else:
+                logging.warning(f"本地模型路径不存在: {embedding_config.local_model_path}，将使用模型: {model_name}")
+        
         embedding_manager = EmbeddingManager(
-            model_name=args.embedding_model,
+            model_name=model_name,
             cache_embeddings=not args.no_cache
         )
         
@@ -145,8 +156,20 @@ def interactive_mode(args):
         config = Config.from_env(args.config)
         
         use_cache = not args.no_cache and not args.use_embedding_cache
+        
+        embedding_config = config.embedding
+        model_name = args.embedding_model
+        if embedding_config.local_model_path:
+            from pathlib import Path
+            local_path = Path(embedding_config.local_model_path)
+            if local_path.exists():
+                logging.info(f"使用本地嵌入模型路径: {embedding_config.local_model_path}")
+                model_name = str(local_path)
+            else:
+                logging.warning(f"本地模型路径不存在: {embedding_config.local_model_path}，将使用模型: {model_name}")
+        
         embedding_manager = EmbeddingManager(
-            model_name=args.embedding_model,
+            model_name=model_name,
             cache_embeddings=use_cache
         )
         
@@ -154,9 +177,12 @@ def interactive_mode(args):
         retriever = Retriever(vector_store, embedding_manager)
         
         # 创建统一的LLM客户端
+        # 优先级：命令行参数 > .env配置 > 默认值
         from src.llm_client import LLMConfig, LLMClient
+        
         if args.enable_online_llm:
-            # 在线LLM配置
+            # 命令行显式指定使用在线LLM
+            logging.info("使用命令行参数配置在线LLM")
             llm_config = LLMConfig(
                 enable_online=True,
                 api_key=args.online_llm_api_key,
@@ -166,8 +192,21 @@ def interactive_mode(args):
                 max_tokens=args.online_llm_max_tokens,
                 timeout=args.online_llm_timeout
             )
+        elif config.enable_online_llm and config.online_llm:
+            # 使用.env文件中的在线LLM配置
+            logging.info("使用.env文件配置在线LLM")
+            llm_config = LLMConfig(
+                enable_online=True,
+                api_key=config.online_llm.api_key,
+                base_url=config.online_llm.base_url,
+                model=config.online_llm.model,
+                temperature=config.online_llm.temperature,
+                max_tokens=config.online_llm.max_tokens,
+                timeout=config.online_llm.timeout
+            )
         else:
-            # Ollama配置
+            # 使用本地Ollama配置
+            logging.info("使用本地Ollama配置")
             llm_config = LLMConfig(
                 enable_online=False,
                 base_url=args.llm_base_url,
@@ -260,8 +299,20 @@ def query_mode(args):
         config = Config.from_env(args.config)
         
         use_cache = not args.no_cache and not args.use_embedding_cache
+        
+        embedding_config = config.embedding
+        model_name = args.embedding_model
+        if embedding_config.local_model_path:
+            from pathlib import Path
+            local_path = Path(embedding_config.local_model_path)
+            if local_path.exists():
+                logging.info(f"使用本地嵌入模型路径: {embedding_config.local_model_path}")
+                model_name = str(local_path)
+            else:
+                logging.warning(f"本地模型路径不存在: {embedding_config.local_model_path}，将使用模型: {model_name}")
+        
         embedding_manager = EmbeddingManager(
-            model_name=args.embedding_model,
+            model_name=model_name,
             cache_embeddings=use_cache
         )
         
@@ -269,9 +320,12 @@ def query_mode(args):
         retriever = Retriever(vector_store, embedding_manager)
         
         # 创建统一的LLM客户端
+        # 优先级：命令行参数 > .env配置 > 默认值
         from src.llm_client import LLMConfig, LLMClient
+        
         if args.enable_online_llm:
-            # 在线LLM配置
+            # 命令行显式指定使用在线LLM
+            logging.info("使用命令行参数配置在线LLM")
             llm_config = LLMConfig(
                 enable_online=True,
                 api_key=args.online_llm_api_key,
@@ -281,8 +335,21 @@ def query_mode(args):
                 max_tokens=args.online_llm_max_tokens,
                 timeout=args.online_llm_timeout
             )
+        elif config.enable_online_llm and config.online_llm:
+            # 使用.env文件中的在线LLM配置
+            logging.info("使用.env文件配置在线LLM")
+            llm_config = LLMConfig(
+                enable_online=True,
+                api_key=config.online_llm.api_key,
+                base_url=config.online_llm.base_url,
+                model=config.online_llm.model,
+                temperature=config.online_llm.temperature,
+                max_tokens=config.online_llm.max_tokens,
+                timeout=config.online_llm.timeout
+            )
         else:
-            # Ollama配置
+            # 使用本地Ollama配置
+            logging.info("使用本地Ollama配置")
             llm_config = LLMConfig(
                 enable_online=False,
                 base_url=args.llm_base_url,
