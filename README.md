@@ -1,23 +1,43 @@
-# Knowledge Graph Builder
+# 知识图谱问答系统
 
-从非结构化文本数据构建知识图谱的原型系统，使用 LangChain + Ollama + Neo4j。
+基于本地大语言模型的知识图谱问答系统，支持从非结构化数据构建知识图谱，并通过向量检索和 LLM 生成智能回答。
+
+## 系统架构
+
+### 构建阶段
+使用 Ollama 本地 deepseek-r1:8b 大模型，从非结构化数据提取知识图谱三元组结构，存入 Neo4j 图数据库；再使用知识图谱和原文，生成文本描述后，生成嵌入向量并入库 ChromaDB。
+
+### 推理阶段
+使用本地模型 deepseek-r1:8b，在用户输入提问时，先从向量数据库中检索相关 topK 实体、关系，再连同用户输入的文字，一同喂给本地 LLM，生成回答。
+
+### Web 部署
+使用 Flask + JavaScript 方式部署推理服务，提供页面对话式交互。
 
 ## 功能特性
 
-- 从 Markdown 文件加载和分块文本数据
-- 使用本地 Ollama (Mistral 7B) 进行实体和关系提取
-- 将知识存储到 Neo4j 图数据库
-- 支持批量处理和进度跟踪
-- 提供图谱查询和导出功能
-- 适配 RTX 3060 6G 显存
+- 知识图谱构建：从非结构化文本自动提取实体和关系
+- 向量检索：基于语义相似度检索相关实体和关系
+- 智能问答：结合检索结果和用户问题生成准确答案
+- Web 界面：现代化响应式 UI，支持实时问答
+- 数据源查看：弹框展示原始数据源内容
+- 对话历史：支持多轮对话和上下文记忆
+- 系统监控：实时显示系统状态和统计信息
 
 ## 技术栈
 
+### 后端
 - **Python 3.10+**
+- **Flask** - Web 框架
 - **LangChain** - LLM 集成框架
-- **Ollama** - 本地大语言模型服务
+- **Ollama** - 本地大语言模型服务（deepseek-r1:8b）
 - **Neo4j** - 图数据库
-- **Mistral 7B** - 本地 LLM 模型
+- **ChromaDB** - 向量数据库
+- **all-MiniLM-L6-v2** - 嵌入模型
+
+### 前端
+- **原生 HTML + CSS + JavaScript**
+- **Tailwind CSS** - 样式框架（通过 CDN）
+- **Fetch API** - 异步数据交互
 
 ## 项目结构
 
@@ -27,15 +47,26 @@ KG/
 ├── requirements.txt          # Python 依赖
 ├── .env.example             # 环境变量示例
 ├── data/
-│   └── Apple_Environmental_Progress_Report_2024.md
+│   └── Dulce.json         # 数据源文件
+├── chroma_db/               # ChromaDB 向量数据库
 ├── src/
 │   ├── __init__.py
 │   ├── data_loader.py       # 数据加载和分块
 │   ├── neo4j_manager.py     # Neo4j 数据库操作
 │   ├── entity_extractor.py  # 实体关系提取
-│   └── graph_builder.py     # 图谱构建流程
-├── main.py                   # 主程序
-└── README.md                 # 本文件
+│   ├── graph_builder.py     # 图谱构建流程
+│   ├── text_generator.py    # 文本描述生成
+│   ├── embedding_manager.py # 嵌入向量管理
+│   ├── vector_store.py      # 向量存储管理
+│   ├── retriever.py        # 向量检索器
+│   └── qa_engine.py        # 问答引擎
+├── templates/
+│   └── index.html         # Web 前端页面
+├── web_server.py            # Flask Web 服务器
+├── qa_cli.py              # 命令行问答工具
+├── start_web.bat           # Windows 启动脚本
+├── WEB_FRONTEND.md        # Web 前端文档
+└── README.md              # 本文件
 ```
 
 ## 安装步骤
@@ -44,10 +75,10 @@ KG/
 
 下载并安装 Ollama: https://ollama.com/download
 
-安装完成后，拉取 Mistral 7B 模型（推荐使用 4-bit 量化版本）：
+安装完成后，拉取 deepseek-r1:8b 模型：
 
 ```bash
-ollama pull mistral:7b-instruct-v0.3-q4_0
+ollama pull deepseek-r1:8b
 ```
 
 验证模型是否可用：
@@ -100,7 +131,7 @@ copy .env.example .env  # Windows
 cp .env.example .env   # Linux/Mac
 ```
 
-2. 编辑 `.env` 文件，设置你的配置：
+2. 从`.env.example`复制自己的 `.env` 文件，设置你的配置：
 
 ```env
 # Neo4j Configuration
@@ -110,10 +141,10 @@ NEO4J_PASSWORD=your_password_here
 
 # Ollama Configuration
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=mistral:7b-instruct-v0.3-q4_0
+OLLAMA_MODEL=deepseek-r1:8b
 
 # Data Configuration
-DATA_FILE=data/Apple_Environmental_Progress_Report_2024.md
+DATA_FILE=data/Dulce.json
 
 # Processing Configuration
 CHUNK_SIZE=2000
@@ -122,87 +153,313 @@ MAX_RETRIES=3
 RETRY_DELAY=2
 ```
 
+## 高级配置
+
+### 实体链接配置
+
+实体链接功能允许系统在提取新实体时，先查询图数据库中现有的实体，避免重复创建并建立正确的关系。
+
+**配置方式**（优先级：命令行参数 > 环境变量 > 默认值）：
+
+1. **环境变量配置**（`.env`文件中添加）：
+   ```env
+   # 实体链接配置
+   ENABLE_ENTITY_LINKING=true
+   ENTITY_TYPES_TO_LINK=Patient,PatientId,Diagnosis
+   
+   # LLM日志记录配置
+   ENABLE_LLM_LOGGING=false
+   ```
+
+2. **命令行参数配置**：
+   ```bash
+   # 启用实体链接
+   python main.py --build --enable-entity-linking --entity-types-to-link "Patient,PatientId"
+   
+   # 启用LLM详细日志记录
+   python main.py --build --enable-llm-logging
+   
+   # 同时启用两个功能
+   python main.py --build --enable-entity-linking --enable-llm-logging
+   ```
+
+### 实体链接使用场景
+
+#### 场景1：增量构建患者病历
+**场景描述**：在已有患者基本信息的基础上，增量添加新的诊断、症状等信息。
+
+**操作步骤**：
+1. 首次构建：导入患者基本信息（是否--no-clear清空数据库可选）
+   ```bash
+   python main.py --build --config .env --no-clear
+   ```
+
+2. 后续增量构建：启用实体链接，添加新信息
+   ```bash
+   python main.py --build --config .env --no-clear --enable-entity-linking
+   ```
+
+**效果**：新提取的诊断"黄染牙"会自动关联到现有患者"林悦"，而不是创建新患者。
+
+#### 场景2：多类型实体链接
+**场景描述**：需要链接多种类型的实体（患者、诊断、症状等）。
+
+**操作步骤**：
+```bash
+python main.py --build --config .env --no-clear \
+    --enable-entity-linking \
+    --entity-types-to-link "Patient,Diagnosis,Symptom"
+```
+
+**效果**：系统会查询图数据库中现有的患者、诊断和症状实体，新提取的实体会自动与现有实体建立关系。
+
+#### 场景3：仅链接患者ID
+**场景描述**：只链接患者ID，其他实体正常创建，最小化数据库查询。
+
+**操作步骤**：
+```bash
+python main.py --build --config .env --no-clear \
+    --enable-entity-linking \
+    --entity-types-to-link "PatientId"
+```
+
+**效果**：仅查询患者ID，其他实体（诊断、症状等）正常创建，适合性能敏感场景。
+
+### LLM详细日志记录
+
+LLM详细日志记录功能会创建独立的日志文件，记录实体提取的完整过程，包括：
+- 系统提示词和用户提示词
+- LLM原始响应（含深度思考过程）
+- 清理后的JSON响应
+- 解析后的实体和关系数据
+
+**启用方式**：
+```bash
+# 命令行启用
+python main.py --build --enable-llm-logging
+
+# 环境变量启用（.env文件中设置ENABLE_LLM_LOGGING=true）
+```
+
+**日志文件位置**：`logs/chunk_analysis_YYYYMMDD_HHMMSS.log`
+
 ## 使用方法
 
 ### 构建知识图谱
+
+使用 `main.py` 构建知识图谱：
 
 ```bash
 python main.py --build
 ```
 
 这将：
-1. 加载并分块 Markdown 文件
+1. 加载并分块数据文件
 2. 使用 Ollama 提取实体和关系
 3. 将结果存储到 Neo4j
 4. 显示构建统计信息
 
-### 查询实体信息
+### 构建向量索引
+
+使用 `qa_cli.py` 构建向量索引：
 
 ```bash
-python main.py --query "Apple"
+python qa_cli.py build-index
 ```
 
-查询特定实体的关系信息。
+这将：
+1. 从 Neo4j 读取实体和关系
+2. 生成文本描述
+3. 生成嵌入向量
+4. 存储到 ChromaDB
 
-### 显示图谱摘要
+### 命令行问答
+
+使用 `qa_cli.py` 进行问答：
 
 ```bash
-python main.py --summary
+# 单次问答
+python qa_cli.py query "Who is Alex Mercer?"
+
+# 交互式问答
+python qa_cli.py interactive
 ```
 
-显示整个图谱的统计信息，包括实体和关系类型分布。
+### Web 界面问答
 
-### 导出图谱
+启动 Web 服务器：
+
+**Windows:**
 
 ```bash
-python main.py --export graph.json
+start_web.bat
 ```
 
-将图谱导出为 JSON 文件。
-
-### 不清除数据库重新构建
+**Linux/Mac:**
 
 ```bash
-python main.py --build --no-clear
+source venv/bin/activate
+python web_server.py
 ```
 
-在现有数据库基础上添加新数据。
+服务将在 `http://localhost:5000` 启动。
 
-### 使用自定义配置文件
+在浏览器中打开 `http://localhost:5000` 即可使用问答界面。
 
-```bash
-python main.py --build --config custom.env
+### Web 界面功能
+
+- **提问**：输入问题并提交查询
+- **答案展示**：显示 LLM 生成的答案
+- **来源信息**：显示检索到的相关实体和关系
+- **数据源查看**：点击"查看数据源"按钮查看原始数据
+- **系统统计**：显示实体和关系总数
+- **对话历史**：支持多轮对话（可隐藏）
+
+## API 接口
+
+### 1. 健康检查
+
 ```
+GET /api/health
+```
+
+响应：
+
+```json
+{
+  "status": "ok",
+  "components": {
+    "embedding_manager": true,
+    "vector_store": true,
+    "retriever": true,
+    "qa_engine": true
+  }
+}
+```
+
+### 2. 获取统计信息
+
+```
+GET /api/stats
+```
+
+响应：
+
+```json
+{
+  "status": "success",
+  "entity_count": 26,
+  "relationship_count": 16
+}
+```
+
+### 3. 问答查询
+
+```
+POST /api/query
+Content-Type: application/json
+
+{
+  "query": "Who is Alex Mercer?",
+  "retrieval_mode": "hybrid",
+  "top_k": 5,
+  "min_similarity": 0.0,
+  "entity_types": ["Character"],
+  "relationship_types": [],
+  "use_conversation": false
+}
+```
+
+响应：
+
+```json
+{
+  "status": "success",
+  "data": {
+    "query": "Who is Alex Mercer?",
+    "answer": "Alex is a character...",
+    "sources": [
+      {
+        "type": "entity",
+        "name": "Alex Mercer",
+        "entity_type": "Character",
+        "text_description": "Alex Mercer is a Character...",
+        "similarity": 0.95
+      }
+    ],
+    "retrieval_mode": "hybrid",
+    "retrieval_count": 3
+  }
+}
+```
+
+### 4. 清空对话历史
+
+```
+POST /api/clear-conversation
+```
+
+### 5. 获取对话历史
+
+```
+GET /api/conversation-history
+```
+
+### 6. 查看数据源
+
+```
+GET /api/data-source
+```
+
+响应：
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "1",
+      "text": "# Operation: Dulce\n\n## Chapter 1\n\n..."
+    }
+  ]
+}
+```
+
+## 检索模式
+
+系统支持以下检索模式：
+
+- **hybrid**：混合检索（实体+关系）
+- **entity**：仅检索实体
+- **relationship**：仅检索关系
+- **contextual**：上下文增强检索
 
 ## 实体类型
 
 系统支持以下实体类型：
 
-- **Organization**: 公司、机构、组织（如：Apple, suppliers）
-- **Product**: 产品、设备、服务（如：MacBook Air, iPhone 15）
-- **Material**: 材料、元素、物质（如：aluminum, cobalt）
-- **Goal**: 目标、承诺、指标（如：Apple 2030, carbon neutrality）
-- **Metric**: 测量值、统计数据（如：emissions, recycled percentage）
-- **Initiative**: 计划、项目、活动（如：Power for Impact）
-- **Location**: 地点、地区、国家（如：Nepal, Colombia）
-- **Person**: 个人、角色（如：Lisa Jackson）
-- **Technology**: 技术、方法、流程（如：renewable energy）
-- **Program**: 结构化程序或框架（如：Supplier Clean Water Program）
+- **Character**：角色、人物
+- **Organization**：公司、机构、组织
+- **Location**：地点、地区
+- **Technology**：技术、设备
+- **Concept**：概念、想法
+- **Object**：物体、物品
+- **Event**：事件、活动
 
 ## 关系类型
 
 系统支持以下关系类型：
 
-- **ACHIEVES**: Organization → Goal（组织实现目标）
-- **USES**: Product → Material（产品使用材料）
-- **REDUCES**: Initiative → Metric（计划减少指标）
-- **CONTAINS**: Product → Material（产品包含材料）
-- **IMPLEMENTS**: Organization → Initiative（组织实施计划）
-- **LOCATED_IN**: Initiative → Location（计划位于某地）
-- **PARTNERS_WITH**: Organization → Organization（组织合作）
-- **PRODUCES**: Organization → Product（组织生产产品）
-- **MEASURES**: Metric → Goal（指标衡量目标进展）
-- **TARGETS**: Goal → Metric（目标针对特定指标）
+- **WORKS_FOR**：工作于
+- **LOCATED_AT**：位于
+- **USES**：使用
+- **INTERACTS_WITH**：与...互动
+- **PART_OF**：属于
+- **INVOLVED_IN**：参与
+- **RELATED_TO**：相关
+- **LEADS**：领导
+- **OWNS**：拥有
+- **PARTICIPATES_IN**：参与
 
 ## 性能优化建议
 
@@ -217,7 +474,6 @@ python main.py --build --config custom.env
 
 2. **减小上下文窗口**：
    ```env
-   # 在 config.py 中调整
    num_ctx=2048  # 默认 4096
    ```
 
@@ -228,7 +484,7 @@ python main.py --build --config custom.env
 
 4. **使用更激进的量化**：
    ```bash
-   ollama pull mistral:7b-instruct-v0.3-q3_k_m
+   ollama pull deepseek-r1:8b-q4_k_m
    ```
 
 ### 处理速度优化
@@ -237,7 +493,7 @@ python main.py --build --config custom.env
 2. **减少重试次数**：设置 `MAX_RETRIES=1`
 3. **并行处理**：可以修改代码支持多线程处理
 
-## 常见问题
+## 故障排除
 
 ### 1. Ollama 连接失败
 
@@ -294,8 +550,8 @@ netstat -an | grep 7687
 
 ```python
 ENTITY_TYPES = [
-    "Organization", "Product", "Material", "Goal", "Metric",
-    "Initiative", "Location", "Person", "Technology", "Program",
+    "Character", "Organization", "Location", "Technology",
+    "Concept", "Object", "Event",
     "YourNewType"  # 添加新类型
 ]
 ```
@@ -306,8 +562,9 @@ ENTITY_TYPES = [
 
 ```python
 RELATIONSHIP_TYPES = [
-    "ACHIEVES", "USES", "REDUCES", "CONTAINS", "IMPLEMENTS",
-    "LOCATED_IN", "PARTNERS_WITH", "PRODUCES", "MEASURES", "TARGETS",
+    "WORKS_FOR", "LOCATED_AT", "USES", "INTERACTS_WITH",
+    "PART_OF", "INVOLVED_IN", "RELATED_TO",
+    "LEADS", "OWNS", "PARTICIPATES_IN",
     "YourNewRelation"  # 添加新关系
 ]
 ```
@@ -316,12 +573,24 @@ RELATIONSHIP_TYPES = [
 
 修改 `entity_extractor.py` 中的 `create_extraction_prompt()` 方法来自定义提取逻辑。
 
+### 添加新的 API 端点
+
+在 `web_server.py` 中添加新的路由：
+
+```python
+@app.route('/api/custom', methods=['GET'])
+def custom_endpoint():
+    return jsonify({'status': 'success', 'data': 'custom data'})
+```
+
 ## 学习资源
 
 - **LangChain 文档**: https://python.langchain.com/docs/get_started/introduction
 - **Ollama 文档**: https://ollama.com/docs
 - **Neo4j 文档**: https://neo4j.com/docs/getting-started/
 - **Cypher 查询语言**: https://neo4j.com/docs/cypher-manual/
+- **Flask 文档**: https://flask.palletsprojects.com/
+- **ChromaDB 文档**: https://docs.trychroma.com/
 
 ## 许可证
 

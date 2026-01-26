@@ -1,5 +1,6 @@
 import re
-from typing import List, Dict, Any
+import json
+from typing import List, Dict, Any, Union
 from pathlib import Path
 
 
@@ -17,11 +18,39 @@ class DataLoader:
         self.file_path = Path(file_path)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        
+    def detect_file_format(self) -> str:
+        """检测文件格式"""
+        file_extension = self.file_path.suffix.lower()
+        if file_extension == '.json':
+            return 'json'
+        elif file_extension in ['.md', '.markdown', '.txt']:
+            return 'markdown'
+        else:
+            # 默认尝试markdown格式
+            return 'markdown'
 
     def load_markdown(self) -> str:
         with open(self.file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         return content
+
+    def load_json(self) -> List[Dict[str, Any]]:
+        """加载JSON格式的数据，支持数组和对象两种格式"""
+        with open(self.file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # 如果数据是字典（对象格式），转换为列表格式
+        if isinstance(data, dict):
+            # 检查是否是病历对象格式（包含中文键名）
+            if any(key in data for key in ['主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱']):
+                # 将病历对象转换为列表格式
+                return [data]
+            # 如果是其他字典格式，也转换为列表
+            return [data]
+        
+        # 如果已经是列表，直接返回
+        return data
 
     def clean_text(self, text: str) -> str:
         text = re.sub(r'Image /page/\d+/Picture/\d+ description: \{.*?\}', '', text, flags=re.DOTALL)
@@ -35,16 +64,91 @@ class DataLoader:
         
         lines = text.split('\n')
         for line in lines:
+            is_header = False
+            title = line.strip()
+            
             if line.startswith('#'):
+                is_header = True
+                title = re.sub(r'^#+\s*', '', line).strip()
+            elif re.match(r'^病历片断 \d+：', line):
+                is_header = True
+                title = line.strip()
+            
+            if is_header:
                 if current_section["content"].strip():
                     sections.append(current_section)
-                title = re.sub(r'^#+\s*', '', line).strip()
                 current_section = {"title": title, "content": ""}
             else:
                 current_section["content"] += line + '\n'
         
         if current_section["content"].strip():
             sections.append(current_section)
+        
+        return sections
+
+    def process_json_data(self, data: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        """处理JSON数据，转换为章节格式"""
+        sections = []
+        
+        for item in data:
+            # 提取章节信息 - 支持中文和英文键名
+            item_id = item.get('id', 'unknown')
+            
+            # 检查是否是病历对象格式（包含中文键名）
+            is_medical_record = any(key in item for key in ['主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱'])
+            
+            if is_medical_record:
+                # 对于病历格式，组合所有相关字段
+                text_content = ''
+                for key in ['主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱']:
+                    if key in item:
+                        value = item[key]
+                        # 处理数组类型的字段（如检查、诊断等）
+                        if isinstance(value, list):
+                            for sub_item in value:
+                                if isinstance(sub_item, dict) and '内容' in sub_item:
+                                    text_content += f"{key}：{sub_item['内容']}\n"
+                                elif isinstance(sub_item, str):
+                                    text_content += f"{key}：{sub_item}\n"
+                        elif isinstance(value, str) and value.strip():
+                            text_content += f"{key}：{value}\n"
+                
+                if not text_content:
+                    # 如果都没有，使用 id 作为后备
+                    text_content = f"ID: {item_id}\n"
+            else:
+                # 对于普通格式，支持多种文本字段：text（英文）、主诉（中文）、现病史（中文）等
+                text_content = item.get('text', '') or item.get('主诉', '') or item.get('现病史', '')
+                if not text_content:
+                    # 尝试组合所有可能的字段
+                    text_content = ''
+                    for key in ['text', '主诉', '现病史', '既往史', '检查', '诊断', '治疗方案', '处置', '医嘱']:
+                        if key in item:
+                            text_content += f"{key}：{item[key]}\n"
+                    if not text_content:
+                        # 如果都没有，使用 id 作为后备
+                        text_content = f"ID: {item_id}\n"
+            
+            metadata = item.get('metadata', {})
+            
+            # 从文本中提取标题（如果有markdown标题格式）
+            lines = text_content.split('\n')
+            title = f"Chapter {item_id}"  # 默认标题
+            
+            # 查找第一个标题行
+            for line in lines:
+                if line.startswith('#'):
+                    title = re.sub(r'^#+\s*', '', line).strip()
+                    break
+            
+            # 清理文本内容
+            cleaned_text = self.clean_text(text_content)
+            
+            sections.append({
+                "title": title,
+                "content": cleaned_text,
+                "metadata": metadata
+            })
         
         return sections
 
@@ -89,15 +193,28 @@ class DataLoader:
         return chunks, next_chunk_id
 
     def load_and_chunk(self) -> List[DataChunk]:
-        raw_text = self.load_markdown()
-        cleaned_text = self.clean_text(raw_text)
-        sections = self.split_by_headers(cleaned_text)
+        """加载并分块数据，支持多种文件格式"""
+        file_format = self.detect_file_format()
+        
+        if file_format == 'json':
+            # 处理JSON格式数据
+            json_data = self.load_json()
+            sections = self.process_json_data(json_data)
+        else:
+            # 处理Markdown格式数据
+            raw_text = self.load_markdown()
+            cleaned_text = self.clean_text(raw_text)
+            sections = self.split_by_headers(cleaned_text)
         
         all_chunks = []
         global_chunk_count = 0
         
         for section in sections:
-            chunks, chunk_count = self.chunk_text(section["content"], section["title"], global_chunk_count)
+            # 提取章节内容，支持不同的section格式
+            content = section.get("content", "")
+            title = section.get("title", "Unknown")
+            
+            chunks, chunk_count = self.chunk_text(content, title, global_chunk_count)
             all_chunks.extend(chunks)
             global_chunk_count = chunk_count
         
