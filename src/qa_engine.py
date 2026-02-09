@@ -164,6 +164,7 @@ class QAEngine:
         retrieval_results = None
         
         if retrieval_mode == 'entity':
+            logging.info("执行实体检索...")
             retrieval_results = {
                 'entities': self.retriever.retrieve_entities(
                     query=query,
@@ -174,6 +175,7 @@ class QAEngine:
                 'relationships': []
             }
         elif retrieval_mode == 'relationship':
+            logging.info("执行关系检索...")
             retrieval_results = {
                 'entities': [],
                 'relationships': self.retriever.retrieve_relationships(
@@ -184,6 +186,7 @@ class QAEngine:
                 )
             }
         elif retrieval_mode == 'hybrid':
+            logging.info("执行混合检索...")
             retrieval_results = self.retriever.retrieve_hybrid(
                 query=query,
                 top_k=top_k,
@@ -192,6 +195,7 @@ class QAEngine:
                 min_similarity=min_similarity
             )
         elif retrieval_mode == 'contextual':
+            logging.info("执行上下文检索...")
             entities = self.retriever.retrieve_contextual(
                 query=query,
                 context_window=200,
@@ -207,13 +211,22 @@ class QAEngine:
         else:
             prompt = self._build_context_prompt(query, retrieval_results)
         
+        logging.info(f"构建的Prompt长度: {len(prompt)} 字符")
+        logging.debug(f"完整Prompt内容:\n{prompt}")
+        
         try:
+            logging.info("开始调用LLM生成答案...")
             response = self.llm.invoke(prompt)
             answer = response.content
             
+            logging.info(f"LLM响应成功，答案长度: {len(answer)} 字符")
+            logging.info(f"LLM答案内容:\n{answer}")
+            
             sources = []
             if retrieval_results and retrieval_results.get('entities'):
+                logging.info(f"检索到 {len(retrieval_results['entities'])} 个实体:")
                 for entity in retrieval_results['entities'][:3]:
+                    logging.info(f"  - {entity.get('name', '')} ({entity.get('type', '')}): 相似度={entity.get('similarity', 0):.3f}")
                     sources.append({
                         'type': 'entity',
                         'name': entity.get('name', ''),
@@ -222,7 +235,9 @@ class QAEngine:
                         'similarity': entity.get('similarity', 0)
                     })
             if retrieval_results and retrieval_results.get('relationships'):
+                logging.info(f"检索到 {len(retrieval_results['relationships'])} 个关系:")
                 for rel in retrieval_results['relationships'][:3]:
+                    logging.info(f"  - {rel.get('source', '')} -> {rel.get('target', '')} ({rel.get('type', '')}): 相似度={rel.get('similarity', 0):.3f}")
                     sources.append({
                         'type': 'relationship',
                         'source': rel.get('source', ''),
@@ -247,12 +262,15 @@ class QAEngine:
                 })
                 if len(self.conversation_history) > 10:
                     self.conversation_history = self.conversation_history[-10:]
+                logging.info(f"对话历史已更新，当前对话轮数: {len(self.conversation_history)}")
             
             logging.info(f"回答完成，答案长度：{len(answer)}，检索到 {len(sources)} 个来源")
             return result
             
         except Exception as e:
             logging.error(f"回答失败: {e}")
+            import traceback
+            logging.error(f"异常堆栈: {traceback.format_exc()}")
             return {
                 'query': query,
                 'answer': f"抱歉，回答您的问题时出错了：{str(e)}",

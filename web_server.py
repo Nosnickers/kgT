@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import json
+from datetime import datetime
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from pathlib import Path
@@ -18,8 +19,40 @@ from src.llm_client import create_llm_client, LLMConfig, LLMClient
 app = Flask(__name__)
 CORS(app)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def configure_logging():
+    """配置日志记录"""
+    logs_dir = Path('logs')
+    logs_dir.mkdir(exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d")
+    log_file = logs_dir / f'web_server_{timestamp}.log'
+    
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+    
+    logging.info(f"日志系统初始化完成，日志文件: {log_file}")
+    return logger
+
+logger = configure_logging()
 
 embedding_manager = None
 vector_store = None
@@ -147,6 +180,7 @@ def query():
         data = request.get_json()
         
         if not data or 'query' not in data:
+            logger.warning("收到无效请求：缺少查询参数")
             return jsonify({
                 'status': 'error',
                 'message': '缺少查询参数'
@@ -160,9 +194,17 @@ def query():
         relationship_types = data.get('relationship_types', [])
         use_conversation = data.get('use_conversation', False)
         
-        logger.info(f"收到查询: {query}, 模式: {retrieval_mode}, top_k: {top_k}")
+        logger.info(f"收到查询请求")
+        logger.info(f"  - 问题: {query}")
+        logger.info(f"  - 检索模式: {retrieval_mode}")
+        logger.info(f"  - Top-K: {top_k}")
+        logger.info(f"  - 最小相似度: {min_similarity}")
+        logger.info(f"  - 实体类型过滤: {entity_types if entity_types else '无'}")
+        logger.info(f"  - 关系类型过滤: {relationship_types if relationship_types else '无'}")
+        logger.info(f"  - 使用对话历史: {use_conversation}")
         
         if not qa_engine:
+            logger.error("问答引擎未初始化")
             return jsonify({
                 'status': 'error',
                 'message': '问答引擎未初始化'
@@ -179,10 +221,23 @@ def query():
         )
         
         if result.get('error'):
+            logger.error(f"查询执行失败: {result['error']}")
             return jsonify({
                 'status': 'error',
                 'message': result['error']
             }), 500
+        
+        logger.info(f"查询成功完成")
+        logger.info(f"  - 答案长度: {len(result.get('answer', ''))}")
+        logger.info(f"  - 检索来源数量: {result.get('retrieval_count', 0)}")
+        
+        if result.get('sources'):
+            logger.info(f"  - 来源详情:")
+            for i, source in enumerate(result['sources'][:3], 1):
+                if source.get('type') == 'entity':
+                    logger.info(f"    {i}. 实体: {source.get('name')} ({source.get('entity_type')}) - 相似度: {source.get('similarity', 0):.3f}")
+                elif source.get('type') == 'relationship':
+                    logger.info(f"    {i}. 关系: {source.get('source')} -> {source.get('target')} ({source.get('rel_type')}) - 相似度: {source.get('similarity', 0):.3f}")
         
         return jsonify({
             'status': 'success',
@@ -190,9 +245,9 @@ def query():
         })
         
     except Exception as e:
-        logger.error(f"查询失败: {e}")
+        logger.error(f"查询处理异常: {e}")
         import traceback
-        traceback.print_exc()
+        logger.error(f"异常堆栈: {traceback.format_exc()}")
         return jsonify({
             'status': 'error',
             'message': str(e)

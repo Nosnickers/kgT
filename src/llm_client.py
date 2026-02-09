@@ -3,6 +3,7 @@
 """
 import os
 import logging
+import time
 from typing import Optional, Dict, Any
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
@@ -99,10 +100,35 @@ class LLMClient:
     def invoke(self, prompt: str) -> str:
         """调用 LLM 并返回文本响应"""
         try:
+            logging.info("=" * 80)
+            logging.info("开始调用 LLM")
+            logging.info(f"LLM 配置: {self.config}")
+            logging.info(f"Prompt 长度: {len(prompt)} 字符")
+            
+            prompt_preview = prompt[:500] if len(prompt) > 500 else prompt
+            logging.info(f"Prompt 预览:\n{prompt_preview}")
+            if len(prompt) > 500:
+                logging.info(f"... (Prompt 已截断，完整长度: {len(prompt)} 字符)")
+            
+            start_time = time.time()
             response = self.llm.invoke(prompt)
-            return response.content
+            end_time = time.time()
+            
+            elapsed_time = end_time - start_time
+            logging.info(f"LLM 调用完成，耗时: {elapsed_time:.2f} 秒")
+            
+            answer = response.content
+            logging.info(f"响应长度: {len(answer)} 字符")
+            logging.info(f"LLM 响应内容:\n{answer}")
+            
+            logging.info("=" * 80)
+            return answer
         except Exception as e:
+            logging.error("=" * 80)
             logging.error(f"LLM调用失败: {e}")
+            import traceback
+            logging.error(f"异常堆栈: {traceback.format_exc()}")
+            logging.error("=" * 80)
             raise
     
     def get_llm_instance(self) -> BaseChatModel:
