@@ -92,7 +92,6 @@ def build_index(args):
         embedding_config = config.embedding
         model_name = args.embedding_model
         if embedding_config.local_model_path:
-            from pathlib import Path
             local_path = Path(embedding_config.local_model_path)
             if local_path.exists():
                 logging.info(f"使用本地嵌入模型路径: {embedding_config.local_model_path}")
@@ -160,7 +159,6 @@ def interactive_mode(args):
         embedding_config = config.embedding
         model_name = args.embedding_model
         if embedding_config.local_model_path:
-            from pathlib import Path
             local_path = Path(embedding_config.local_model_path)
             if local_path.exists():
                 logging.info(f"使用本地嵌入模型路径: {embedding_config.local_model_path}")
@@ -303,7 +301,6 @@ def query_mode(args):
         embedding_config = config.embedding
         model_name = args.embedding_model
         if embedding_config.local_model_path:
-            from pathlib import Path
             local_path = Path(embedding_config.local_model_path)
             if local_path.exists():
                 logging.info(f"使用本地嵌入模型路径: {embedding_config.local_model_path}")
