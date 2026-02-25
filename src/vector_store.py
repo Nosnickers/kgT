@@ -220,6 +220,11 @@ class VectorStore:
                         })
             
             logging.info(f"实体搜索完成，查询: '{query_text or 'vector'}'，找到 {len(filtered_results)} 个结果")
+            if filtered_results:
+                logging.info(f"检索到的实体详情:")
+                for i, entity in enumerate(filtered_results, 1):
+                    logging.info(f"  {i}. {entity['name']} ({entity['type']}) - 相似度: {entity['similarity']:.3f}")
+                    logging.info(f"     描述: {entity['text_description'][:100]}{'...' if len(entity['text_description']) > 100 else ''}")
             return filtered_results
             
         except Exception as e:
@@ -276,6 +281,11 @@ class VectorStore:
                         })
             
             logging.info(f"关系搜索完成，查询: '{query_text or 'vector'}'，找到 {len(filtered_results)} 个结果")
+            if filtered_results:
+                logging.info(f"检索到的关系详情:")
+                for i, rel in enumerate(filtered_results, 1):
+                    logging.info(f"  {i}. {rel['source']} -> {rel['target']} ({rel['type']}) - 相似度: {rel['similarity']:.3f}")
+                    logging.info(f"     描述: {rel['relationship_text'][:100]}{'...' if len(rel['relationship_text']) > 100 else ''}")
             return filtered_results
             
         except Exception as e:

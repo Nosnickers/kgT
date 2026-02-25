@@ -45,6 +45,10 @@ class Retriever:
         )
         
         logging.info(f"实体检索完成，找到 {len(results)} 个结果")
+        if results:
+            logging.info(f"  检索到的实体:")
+            for entity in results:
+                logging.info(f"    - {entity.get('name', '')} ({entity.get('type', '')}): 相似度={entity.get('similarity', 0):.3f}")
         return results
     
     def retrieve_relationships(self, query: str, top_k: int = 5,
@@ -74,6 +78,10 @@ class Retriever:
         )
         
         logging.info(f"关系检索完成，找到 {len(results)} 个结果")
+        if results:
+            logging.info(f"  检索到的关系:")
+            for rel in results:
+                logging.info(f"    - {rel.get('source', '')} -> {rel.get('target', '')} ({rel.get('type', '')}): 相似度={rel.get('similarity', 0):.3f}")
         return results
     
     def retrieve_hybrid(self, query: str, top_k: int = 5,
@@ -106,6 +114,17 @@ class Retriever:
         )
         
         logging.info(f"混合检索完成，找到 {len(results['entities'])} 个实体，{len(results['relationships'])} 个关系")
+        
+        if results['entities']:
+            logging.info(f"  实体列表:")
+            for entity in results['entities']:
+                logging.info(f"    - {entity.get('name', '')} ({entity.get('type', '')}): 相似度={entity.get('similarity', 0):.3f}")
+        
+        if results['relationships']:
+            logging.info(f"  关系列表:")
+            for rel in results['relationships']:
+                logging.info(f"    - {rel.get('source', '')} -> {rel.get('target', '')} ({rel.get('type', '')}): 相似度={rel.get('similarity', 0):.3f}")
+        
         return results
     
     def retrieve_contextual(self, query: str, entity_name: str, 
