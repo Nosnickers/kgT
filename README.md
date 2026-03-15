@@ -1,8 +1,9 @@
 # 知识图谱问答系统
-
 基于本地大语言模型的知识图谱问答系统，支持从非结构化数据构建知识图谱，并通过向量检索和 LLM 生成智能回答。
 
+[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/Nosnickers/kgT)
 ## 系统架构
+知识图谱实体多轮提取 + Naive RAG
 
 ### 构建阶段
 使用 Ollama 本地 deepseek-r1:8b 大模型，从非结构化数据提取知识图谱三元组结构，存入 Neo4j 图数据库；再使用知识图谱和原文，生成文本描述后，生成嵌入向量并入库 ChromaDB。
@@ -22,6 +23,12 @@
 - 数据源查看：弹框展示原始数据源内容
 - 对话历史：支持多轮对话和上下文记忆
 - 系统监控：实时显示系统状态和统计信息
+- **双模型支持**：同时支持本地 Ollama 模型和在线 LLM API
+- **深度思考模式**：支持 LLM 深度推理，提升复杂实体关系提取质量
+- **实体链接**：增量构建时自动关联现有实体，避免重复创建
+- **LLM详细日志**：完整记录实体提取过程，便于调试和分析
+- **灵活配置**：支持 Pydantic 配置模型，环境变量和命令行参数灵活配置
+- **本地嵌入模型**：支持配置本地模型路径，避免重复下载
 
 ## 技术栈
 
@@ -29,10 +36,11 @@
 - **Python 3.10+**
 - **Flask** - Web 框架
 - **LangChain** - LLM 集成框架
-- **Ollama** - 本地大语言模型服务（deepseek-r1:8b）
+- **Ollama** - 本地大语言模型服务（支持 deepseek-r1:8b 等）
+- **在线LLM** - 支持 OpenAI 兼容 API（阿里云通义千问等）
 - **Neo4j** - 图数据库
 - **ChromaDB** - 向量数据库
-- **all-MiniLM-L6-v2** - 嵌入模型
+- **all-MiniLM-L6-v2** - 嵌入模型（支持本地模型路径配置）
 
 ### 前端
 - **原生 HTML + CSS + JavaScript**
@@ -43,30 +51,38 @@
 
 ```
 KG/
-├── config.py                 # 配置管理
-├── requirements.txt          # Python 依赖
-├── .env.example             # 环境变量示例
-├── data/
-│   └── Dulce.json         # 数据源文件
-├── chroma_db/               # ChromaDB 向量数据库
+├── config.py                 # 配置管理（支持Pydantic配置模型）
+├── requirements.txt           # Python 依赖
+├── .env.example              # 环境变量示例
+├── data/                     # 数据目录
+│   ├── Apple_Environmental_Progress_Report_2024.md  # 默认数据文件
+│   ├── oralRecords.md        # 口腔病历数据
+│   └── oralChunks.md         # 口腔病历分块数据
+├── chroma_db/                # ChromaDB 向量数据库
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py       # 数据加载和分块
-│   ├── neo4j_manager.py     # Neo4j 数据库操作
-│   ├── entity_extractor.py  # 实体关系提取
-│   ├── graph_builder.py     # 图谱构建流程
-│   ├── text_generator.py    # 文本描述生成
-│   ├── embedding_manager.py # 嵌入向量管理
-│   ├── vector_store.py      # 向量存储管理
-│   ├── retriever.py        # 向量检索器
-│   └── qa_engine.py        # 问答引擎
+│   ├── data_loader.py        # 数据加载和分块
+│   ├── neo4j_manager.py      # Neo4j 数据库操作
+│   ├── entity_extractor.py   # 实体关系提取
+│   ├── graph_builder.py      # 图谱构建流程
+│   ├── text_generator.py     # 文本描述生成
+│   ├── embedding_manager.py  # 嵌入向量管理
+│   ├── vector_store.py       # 向量存储管理
+│   ├── retriever.py          # 向量检索器
+│   ├── qa_engine.py          # 问答引擎
+│   └── llm_client.py         # LLM客户端（支持Ollama和在线API）
 ├── templates/
-│   └── index.html         # Web 前端页面
-├── web_server.py            # Flask Web 服务器
-├── qa_cli.py              # 命令行问答工具
-├── start_web.bat           # Windows 启动脚本
-├── WEB_FRONTEND.md        # Web 前端文档
-└── README.md              # 本文件
+│   └── index.html            # Web 前端页面
+├── test/                     # 测试脚本目录
+├── main.py                   # 主程序（构建知识图谱）
+├── qa_cli.py                 # 命令行问答工具
+├── web_server.py             # Flask Web 服务器
+├── QUICKSTART.md             # 快速开始指南
+├── LOCAL_EMBEDDING_GUIDE.md  # 本地嵌入模型配置指南
+├── LLM_LOGGING_IMPLEMENTATION.md  # LLM日志实现文档
+├── FRONTEND.md               # Web 前端文档
+├── start_web.bat             # Windows 启动脚本
+└── README.md                 # 本文件
 ```
 
 ## 安装步骤
@@ -142,18 +158,89 @@ NEO4J_PASSWORD=your_password_here
 # Ollama Configuration
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=deepseek-r1:8b
+OLLAMA_TEMPERATURE=0.1
+OLLAMA_NUM_CTX=4096
+OLLAMA_DEEP_THOUGHT_MODE=false
+
+# Online LLM Configuration (OpenAI-compatible APIs)
+ENABLE_ONLINE_LLM=false
+ONLINE_LLM_API_KEY=your_api_key
+ONLINE_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+ONLINE_LLM_MODEL=qwen3-coder-plus
 
 # Data Configuration
-DATA_FILE=data/Dulce.json
-
-# Processing Configuration
+DATA_FILE=data/Apple_Environmental_Progress_Report_2024.md
 CHUNK_SIZE=2000
 CHUNK_OVERLAP=200
+
+# Embedding Model Configuration
+EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
+LOCAL_EMBEDDING_MODEL_PATH=/path/to/local/embedding/model
+CACHE_EMBEDDINGS=true
+
+# Processing Configuration
 MAX_RETRIES=3
 RETRY_DELAY=2
+
+# Entity Linking Configuration
+ENABLE_ENTITY_LINKING=false
+ENTITY_TYPES_TO_LINK=Patient,PatientId
+
+# LLM Logging Configuration
+ENABLE_LLM_LOGGING=false
 ```
 
 ## 高级配置
+
+### LLM模型选择
+
+系统支持两种 LLM 模式：
+
+#### 1. 本地 Ollama 模型
+
+```env
+OLLAMA_MODEL=deepseek-r1:8b
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+支持的模型：
+- deepseek-r1:8b
+- mistral:7b-instruct-v0.3-q4_0
+- qwen2.5:3b-instruct-q4_0
+
+#### 2. 在线 LLM (OpenAI 兼容 API)
+
+```env
+ENABLE_ONLINE_LLM=true
+ONLINE_LLM_API_KEY=your_api_key
+ONLINE_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+ONLINE_LLM_MODEL=qwen3-coder-plus
+```
+
+支持的服务：
+- 阿里云通义千问 (qwen3-coder-plus, qwen-turbo 等)
+- OpenAI API
+- 其他 OpenAI 兼容 API
+
+### 深度思考模式
+
+启用深度思考模式可以让 LLM 进行更深入的推理，适用于复杂的实体关系提取：
+
+```env
+OLLAMA_DEEP_THOUGHT_MODE=true
+```
+
+### 嵌入模型配置
+
+系统支持使用本地嵌入模型，避免每次从 Hugging Face Hub 下载：
+
+```env
+EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
+LOCAL_EMBEDDING_MODEL_PATH=/path/to/local/embedding/model
+CACHE_EMBEDDINGS=true
+```
+
+详见 [LOCAL_EMBEDDING_GUIDE.md](LOCAL_EMBEDDING_GUIDE.md)
 
 ### 实体链接配置
 
@@ -250,14 +337,45 @@ python main.py --build --enable-llm-logging
 使用 `main.py` 构建知识图谱：
 
 ```bash
+# 基本构建
 python main.py --build
+
+# 指定配置文件
+python main.py --build --config .env
+
+# 启用详细LLM日志
+python main.py --build --enable-llm-logging
+
+# 增量构建（不清空数据库）
+python main.py --build --no-clear
+
+# 指定数据文件
+python main.py --build --data-file data/oralRecords.md
 ```
 
 这将：
 1. 加载并分块数据文件
-2. 使用 Ollama 提取实体和关系
+2. 使用 Ollama（或其他配置的 LLM）提取实体和关系
 3. 将结果存储到 Neo4j
 4. 显示构建统计信息
+
+### 查询单个实体
+
+```bash
+python main.py --query "Alex Mercer"
+```
+
+### 查看知识图谱摘要
+
+```bash
+python main.py --summary
+```
+
+### 导出知识图谱
+
+```bash
+python main.py --export output.json
+```
 
 ### 构建向量索引
 
